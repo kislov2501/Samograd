@@ -1335,8 +1335,33 @@ function signalMap(){
   }
   return sigMap;
 }
+let acKey = -1, acS = null, acList = [], acSet = new Set();
+/* 4-lane L-bends: a 2×2 avenue block with one horizontal and one vertical avenue arm and nothing else around */
+function avCorners(){
+  const key = roadsVer * 4096 + (S.avN || 0);
+  if (acS === S && acKey === key) return acList;
+  acS = S; acKey = key; acList = []; acSet = new Set();
+  if (!S.av) return acList;
+  const ax = i => { const a = S.av[i]; return a === 3 || a === 4 ? 'h' : a ? 'v' : null; };
+  const rd = (x, y) => inb(x, y) && S.road[idx(x, y)];
+  for (let y = 1; y < H - 2; y++) for (let x = 1; x < W - 2; x++){
+    const t = [idx(x, y), idx(x + 1, y), idx(x, y + 1), idx(x + 1, y + 1)];
+    if (!t.every(i => S.road[i] && S.av[i] && S.terrain[i] !== 1)) continue;
+    const armH = sx => { const xx = sx < 0 ? x - 1 : x + 2; return inb(xx, y + 1) && [idx(xx, y), idx(xx, y + 1)].every(i => S.road[i] && ax(i) === 'h'); };
+    const armV = sy => { const yy = sy < 0 ? y - 1 : y + 2; return inb(x + 1, yy) && [idx(x, yy), idx(x + 1, yy)].every(i => S.road[i] && ax(i) === 'v'); };
+    const emptyH = sx => { const xx = sx < 0 ? x - 1 : x + 2; return !rd(xx, y) && !rd(xx, y + 1); };
+    const emptyV = sy => { const yy = sy < 0 ? y - 1 : y + 2; return !rd(x, yy) && !rd(x + 1, yy); };
+    for (const sx of [-1, 1]) for (const sy of [-1, 1]){
+      if (armH(sx) && armV(sy) && emptyH(-sx) && emptyV(-sy)){
+        acList.push({x, y, sx, sy, px:sx < 0 ? x : x + 2, py:sy < 0 ? y : y + 2}); for (const i of t) acSet.add(i);
+      }
+    }
+  }
+  return acList;
+}
 function hasLight(i){
   if (!S.road[i] || S.terrain[i] === 1 || !isJ(i) || (S.rb && S.rb[i])) return false;
+  avCorners(); if (acSet.has(i)) return false;
   return !!signalMap().get(jcArr[i]);
 }
 function majorAxis(i){
@@ -2072,6 +2097,7 @@ function widenPlan(best, ext){
       const codeOld = axes === 'h' ? (s > 0 ? 3 : 4) : (s > 0 ? 1 : 2), codeNew = axes === 'h' ? (s > 0 ? 4 : 3) : (s > 0 ? 2 : 1);
       const sx = px * s, sy = py * s;
       let ok = true, cost = 0; const reloc = [];
+      if (S.rbList && S.rbList.some(r => S.rb[r] === 1 && seg.some(t => Math.max(Math.abs(t % W - r % W), Math.abs(((t / W) | 0) - ((r / W) | 0))) <= 2))) continue;
       for (const t of seg){
         const n = at(t, sx, sy); if (n < 0){ ok = false; break; }
         const nx = n % W, ny = (n / W) | 0;
@@ -2129,9 +2155,15 @@ function extendAvenue(){
         if (!S.road[b] || avx(b) || S.terrain[b] === 1) continue;
         cands.push([b, c.tiles.length + R() * 3]);
       }
+      /* the street turns at the corner: continue the avenue round it so the corner becomes a smooth 4-lane bend */
+      for (const [end, sg] of [[c.tiles[0], -1], [c.tiles[c.tiles.length - 1], 1]]) for (const [t, out] of [[end, -side], [end + side, side]]){
+        const b = t + out; if (b < 0 || b >= W * H || !S.road[b] || avx(b) || S.terrain[b] === 1) continue;
+        const ahead = end + step * sg; if (ahead >= 0 && ahead < W * H && S.road[ahead] && (!h || ((ahead / W) | 0) === ((end / W) | 0))) continue;
+        cands.push([b, c.tiles.length + 4 + R() * 3, -sg, h ? 'v' : 'h']);
+      }
     }
     cands.sort((a, b) => b[1] - a[1]);
-    for (const [b] of cands.slice(0, 8)){ const pl = widenPlan(b, true); if (pl) return startWiden(pl); }
+    for (const [b, , turn, tax] of cands.slice(0, 10)){ const pl = widenPlan(b, true); if (pl && (turn == null || (pl.axes === tax && pl.s === turn))){ if (turn != null) log('build', '↪ Проспект повернёт за угол плавной дугой, без сужения'); return startWiden(pl); } }
     return false;
   } finally { PAV = null; }
 }
@@ -2171,7 +2203,7 @@ function fixJams(){
   try {
     for (const t of hot.slice(0, 8)){
       if (S.works && S.works.some(w => w.cells.includes(t))) continue;
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){ const xx = t % W + dx, yy = ((t / W) | 0) + dy; if (!inb(xx, yy)) continue; const j = idx(xx, yy); if (hasLight(j) && rbFeasible(j)){ for (const q of hot) if (Math.abs(q % W - xx) + Math.abs(((q / W) | 0) - yy) < 6) S.jam[q] *= .2; return startRoundabout(j, '🚦 Мэрия посчитала машины: пробка у светофора на перекрёстке'); } }
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){ const xx = t % W + dx, yy = ((t / W) | 0) + dy; if (!inb(xx, yy)) continue; const j = idx(xx, yy); if (hasLight(j) && (rbFeasible(j) || rbFeasible4(j))){ for (const q of hot) if (Math.abs(q % W - xx) + Math.abs(((q / W) | 0) - yy) < 6) S.jam[q] *= .2; const F4 = rbFeasible4(j); return F4 ? startRoundabout4(F4, '🚦 Мэрия посчитала машины: пробка у светофора на перекрёстке') : startRoundabout(j, '🚦 Мэрия посчитала машины: пробка у светофора на перекрёстке'); } }
       const cands = [t];
       for (const [dx, dy] of D4) for (let k = 1; k <= 3; k++){ const x = t % W + dx * k, y = ((t / W) | 0) + dy * k; if (!inb(x, y)) break; const c = idx(x, y); if (!S.road[c]) break; cands.push(c); }
       for (const c of cands){
@@ -2220,22 +2252,61 @@ function tickRoundabouts(){
   S.rbw = S.rbw.filter(w => {
     if (S.t < w.t2) return true;
     if (!S.rb) S.rb = new Array(W * H).fill(0); if (!S.rbList) S.rbList = [];
-    S.rb[w.c] = 1; S.rbList.push(w.c); roadsVer++;
+    S.rb[w.c] = w.big ? 2 : 1; S.rbList.push(w.c); roadsVer++;
+    if (w.big) for (const d of [1, W, W + 1]) S.rb[w.c + d] = 3;
     const x = w.c % W, y = (w.c / W) | 0;
-    log('build', '🔄 Открыли круговое движение на перекрёстке улиц ' + hStreet(y, x) + ' и ' + vStreet(x, y) + ': светофор сняли, машины больше не стоят на красный');
+    log('build', '🔄 Открыли ' + (w.big ? 'большое кольцо на 4 полосы' : 'круговое движение') + ' на перекрёстке улиц ' + hStreet(y, x) + ' и ' + vStreet(x, y) + ': светофор сняли, машины больше не стоят на красный');
     return false;
   });
+}
+/* a crossroads with an avenue gets a 4-lane roundabout: the 2×2 junction block in the middle, a 4×4 ring around it */
+function rb4Block(c){
+  const jc = junctionIds(), id = jc[c]; if (id < 0) return null;
+  const tiles = []; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){ const x = c % W + dx, y = ((c / W) | 0) + dy; if (inb(x, y) && jc[idx(x, y)] === id) tiles.push(idx(x, y)); }
+  if (!tiles.some(t => S.av && S.av[t])) return null;
+  const xs = tiles.map(t => t % W), ys = tiles.map(t => (t / W) | 0), x0 = Math.min(...xs), y0 = Math.min(...ys);
+  if (Math.max(...xs) - x0 > 1 || Math.max(...ys) - y0 > 1) return null;
+  return {x0, y0};
+}
+function rbFeasible4(c){
+  const B = rb4Block(c); if (!B) return null;
+  const {x0, y0} = B; if (x0 < 3 || y0 < 3 || x0 > W - 5 || y0 > H - 5) return null;
+  const cells = [];
+  for (let y = y0 - 1; y <= y0 + 2; y++) for (let x = x0 - 1; x <= x0 + 2; x++){
+    const i = idx(x, y); if (!inL(x, y) || S.terrain[i] === 1) return null;
+    if (S.road[i]) continue;
+    const bi = S.bld[i]; if (bi >= 0){ const b = S.buildings[bi]; if (!relocOk(b) || b.type === 'hall' || b.type === 'amuse' || b.type === 'powerplant') return null; }
+    cells.push(i);
+  }
+  const top = idx(x0, y0);
+  for (const r of S.rbList || []){ if (Math.abs(r % W - x0) + Math.abs(((r / W) | 0) - y0) < 7) return null; }
+  for (const w of S.rbw || []){ if (Math.abs(w.c % W - x0) + Math.abs(((w.c / W) | 0) - y0) < 7) return null; }
+  return {top, cells, x0, y0};
+}
+function startRoundabout4(F, why){
+  if (S.money < 3500) return false;
+  let demo = 0;
+  for (const k of F.cells){ const bi = S.bld[k]; if (bi < 0) continue; const b = S.buildings[bi]; if (b.type === 'void') continue; demo++;
+    if (b.type === 'house' || b.type === 'yard' || b.type === 'park' || b.type === 'square'){ vacate(b, b); killBuilding(b); } else relocate(b, '', ' стоит на месте будущего большого кольца'); }
+  S.money -= 3000;
+  for (const k of F.cells){ if (S.bld[k] >= 0) continue; const r = placeB('rbring', k % W, (k / W) | 0, true, {}); r.name = 'Круговое движение'; r.rc = F.top; if (S.terrain[k] === 2) S.terrain[k] = 0; }
+  if (!S.rbw) S.rbw = [];
+  S.rbw.push({c:F.top, big:1, t2:S.t + (1.2 + R() * .6) * DAY});
+  log('build', (why || '🔄 Перекрёсток') + ' улиц ' + hStreet(F.y0, F.x0) + ' и ' + vStreet(F.x0, F.y0) + ': здесь проспект, поэтому строят большое кольцо на 4 полосы' + (demo ? ', вокруг расчищают участки (' + demo + ')' : ''));
+  return true;
 }
 function planRoundabout(force){
   const jc = junctionIds(), seen = new Set(); let best = -1, bs = force ? 0 : 14;
   for (let i = 0; i < W * H; i++){
     if (jc[i] < 0 || seen.has(jc[i])) continue; seen.add(jc[i]);
-    if (!hasLight(i) || !rbFeasible(i)) continue;
+    if (!hasLight(i) || (!rbFeasible(i) && !rbFeasible4(i))) continue;
     let jam = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++){ const xx = i % W + dx, yy = ((i / W) | 0) + dy; if (inb(xx, yy)) jam += (S.jam ? S.jam[idx(xx, yy)] : 0); }
     const sc = jam + (S.flow ? S.flow[i] / 40 : 0);
     if (sc > bs){ bs = sc; best = i; }
   }
-  return best >= 0 && startRoundabout(best, '🚦 Пробка у светофора на перекрёстке');
+  if (best < 0) return false;
+  const F4 = rbFeasible4(best);
+  return F4 ? startRoundabout4(F4, '🚦 Пробка у светофора на перекрёстке') : startRoundabout(best, '🚦 Пробка у светофора на перекрёстке');
 }
 function startWiden(pl){
   const {axes, s, seg, codeOld, codeNew, px, py, bx, by, ext, bridge} = pl;
@@ -2336,6 +2407,9 @@ function corridorIssues(cs){
   }
   for (const c of cs){
     if (c.tiles.length >= 4 || bad.includes(c)) continue;
+    { const h = c.ax === 'h', st = h ? 1 : W, sd = h ? W : 1, f = c.tiles[0], l = c.tiles[c.tiles.length - 1];
+      const rd = (t, n) => n >= 0 && n < W * H && (!h || ((t / W) | 0) === ((n / W) | 0)) && S.road[n];
+      if (rd(f, f - st) && rd(f + sd, f + sd - st) && rd(l, l + st) && rd(l + sd, l + sd + st)) continue; }
     if (cs.some(o => o !== c && o.ax === c.ax && o.line === c.line && gapOf(c, o) <= 4)) continue;
     bad.push(c);
   }
@@ -2424,6 +2498,26 @@ function shortStubs(){
   }
   return out;
 }
+function mergeParallel(){
+  if (!S.av) S.av = new Array(W * H).fill(0);
+  let n = 0;
+  const plain = i => S.road[i] && !S.av[i] && S.terrain[i] !== 1 && !(S.rb && S.rb[i]);
+  for (const hz of [false, true]){
+    const seen = new Uint8Array(W * H);
+    for (let y = 1; y < H - 2; y++) for (let x = 1; x < W - 2; x++){
+      const a = idx(x, y), b = hz ? a + W : a + 1; if (seen[a] || !plain(a) || !plain(b)) continue;
+      const st = hz ? 1 : W, run = [];
+      let k = a; while (k >= 0 && plain(k) && plain(hz ? k + W : k + 1) && (!hz || ((k / W) | 0) === y)) { run.unshift(k); k -= st; }
+      k = a + st; while (k < W * H && plain(k) && plain(hz ? k + W : k + 1) && (!hz || ((k / W) | 0) === y)) { run.push(k); k += st; }
+      for (const t of run) seen[t] = 1;
+      if (run.length < 2) continue;
+      for (const t of run){ if (hz){ S.av[t] = 3; S.av[t + W] = 4; } else { S.av[t] = 1; S.av[t + 1] = 2; } }
+      n++;
+    }
+  }
+  if (n){ roadsVer++; S.avN = (S.avN || 0) + 1; }
+  return n;
+}
 function tidyRoads(limit, quiet){
   let nAv = 0, nStub = 0; const names = [];
   const busy = new Set(); for (const w of S.works || []) for (const [i] of w.av) busy.add(i);
@@ -2436,6 +2530,9 @@ function tidyRoads(limit, quiet){
     }
     if (!did) break;
   }
+  const nm2 = mergeParallel();
+  if (nm2 && !quiet) log('build', '🛣 Две узкие улицы, шедшие вплотную друг к другу, объединили в один проспект на 4 полосы с бульваром');
+  if (nm2) nAv += nm2;
   for (const ch of shortStubs()){
     if (nAv + nStub >= limit) break;
     if (ch.some(t => !S.road[t])) continue;
@@ -5254,12 +5351,31 @@ function pose(path, pi, prog, lane0, outer){
 }
 /* inside a roundabout everyone goes round the island instead of through it */
 function rbAdjust(x, y, a, lane0){
+  const ped = Math.abs(lane0) > .3;
+  if (!ped && S.av){
+    for (const c of avCorners()){
+      if (x < c.x || x > c.x + 2 || y < c.y || y > c.y + 2) continue;
+      const vx = x - c.px, vy = y - c.py, d = Math.hypot(vx, vy); if (d < 1e-4) break;
+      let r = Math.max(.25, Math.min(1.8, d)); if (Math.abs(r - 1) < .2) r = r < 1 ? .8 : 1.2;
+      const ux = vx / d, uy = vy / d, tang = Math.atan2(uy, ux) + Math.PI / 2, da = Math.atan2(Math.sin(tang - a), Math.cos(tang - a)), dir = Math.abs(da) < Math.PI / 2 ? tang : tang + Math.PI;
+      return [c.px + ux * r, c.py + uy * r, a + Math.atan2(Math.sin(dir - a), Math.cos(dir - a)) * .7];
+    }
+  }
   if (!S.rbList || !S.rbList.length) return [x, y, a];
+  for (const c of S.rbList){
+    if (S.rb[c] !== 2) continue;
+    const ox = c % W + 1, oy = ((c / W) | 0) + 1, vx = x - ox, vy = y - oy, d = Math.hypot(vx, vy);
+    if (d > 2.1 || d < 1e-4) continue;
+    const R0 = ped ? 2.0 : 1.55 + (lane0 > 0 ? .2 : -.15);
+    if (d >= R0) return [x, y, a];
+    const k = Math.min(1, (R0 - d) / .6), ux = vx / d, uy = vy / d, nd = d + (R0 - d) * k, tang = Math.atan2(uy, ux) + Math.PI / 2;
+    return [ox + ux * nd, oy + uy * nd, ped ? a : a + Math.atan2(Math.sin(tang - a), Math.cos(tang - a)) * k * .8];
+  }
   const tx = Math.floor(x), ty = Math.floor(y);
   for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++){
-    const cx = tx + dx, cy = ty + dy; if (!inb(cx, cy) || !S.rb[idx(cx, cy)]) continue;
+    const cx = tx + dx, cy = ty + dy; if (!inb(cx, cy) || S.rb[idx(cx, cy)] !== 1) continue;
     const ox = cx + .5, oy = cy + .5, vx = x - ox, vy = y - oy, d = Math.hypot(vx, vy);
-    const ped = Math.abs(lane0) > .3, R0 = ped ? 1.42 : 1.0 + (lane0 > 0 ? .12 : -.08);
+    const R0 = ped ? 1.42 : 1.0 + (lane0 > 0 ? .12 : -.08);
     if (d >= R0 || d < 1e-4) return [x, y, a];
     const k = Math.min(1, (R0 - d) / .5), ux = vx / d, uy = vy / d;
     const nx = ox + ux * (d + (R0 - d) * k), ny = oy + uy * (d + (R0 - d) * k);
@@ -5268,8 +5384,50 @@ function rbAdjust(x, y, a, lane0){
   }
   return [x, y, a];
 }
+function drawAvBends(vx0, vy0, vx1, vy1){
+  if (!S.av) return;
+  for (const c of avCorners()){
+    if (c.x < vx0 - 3 || c.x > vx1 + 2 || c.y < vy0 - 3 || c.y > vy1 + 2) continue;
+    const {x, y, px, py} = c, a0 = Math.atan2((c.sy < 0 ? -1 : 1) * 0, 0);
+    ctx.save(); ctx.beginPath(); ctx.rect(x, y, 2, 2); ctx.clip();
+    ctx.fillStyle = '#9cc47a'; ctx.fillRect(x, y, 2, 2);
+    ctx.fillStyle = '#d2cdc0'; ctx.beginPath(); ctx.arc(px, py, 2.25, 0, 7); ctx.fill();
+    ctx.fillStyle = COL.road; ctx.beginPath(); ctx.arc(px, py, 2.0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#d2cdc0'; ctx.beginPath(); ctx.arc(px, py, .17, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#b9b5aa'; ctx.lineWidth = .3; ctx.beginPath(); ctx.arc(px, py, 1, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#79ad5c'; ctx.lineWidth = .25; ctx.beginPath(); ctx.arc(px, py, 1, 0, 7); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = .03; ctx.setLineDash([.16, .14]);
+    for (const r of [.55, 1.5]){ ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.stroke(); }
+    ctx.setLineDash([]); ctx.restore();
+    const mid = Math.atan2(y + 1 - py, x + 1 - px);
+    drawLamp2(px + Math.cos(mid) * 1, py + Math.sin(mid) * 1, false);
+  }
+}
 function drawRoundabouts(vx0, vy0, vx1, vy1, now){
   for (const c of S.rbList || []){
+    if (S.rb[c] === 2){
+      const x = c % W, y = (c / W) | 0; if (x < vx0 - 3 || x > vx1 + 3 || y < vy0 - 3 || y > vy1 + 3) continue;
+      const ox = x + 1, oy = y + 1;
+      ctx.save(); ctx.beginPath(); ctx.rect(x - 1, y - 1, 4, 4); ctx.clip();
+      for (let yy = y - 1; yy <= y + 2; yy++) for (let xx = x - 1; xx <= x + 2; xx++) if (!S.road[idx(xx, yy)]){ ctx.fillStyle = '#8fc06e'; ctx.fillRect(xx, yy, 1.01, 1.01); }
+      ctx.fillStyle = '#d2cdc0'; ctx.beginPath(); ctx.arc(ox, oy, 2.0, 0, 7); ctx.fill();
+      ctx.fillStyle = COL.road; ctx.beginPath(); ctx.arc(ox, oy, 1.88, 0, 7); ctx.fill();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) for (const k of [0, 1]){
+        const ax = dx > 0 ? x + 2 : dx < 0 ? x - 1 : x + k, ay = dy > 0 ? y + 2 : dy < 0 ? y - 1 : y + k;
+        if (!inb(ax, ay) || !S.road[idx(ax, ay)]) continue; ctx.fillStyle = COL.road; ctx.fillRect(ax + (dx ? 0 : .02), ay + (dy ? 0 : .02), dx ? 1 : .96, dy ? 1 : .96);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = .035; ctx.setLineDash([.16, .13]);
+      for (const r of [1.4]){ ctx.beginPath(); ctx.arc(ox, oy, r, 0, 7); ctx.stroke(); }
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#b9b5aa'; ctx.beginPath(); ctx.arc(ox, oy, .92, 0, 7); ctx.fill();
+      ctx.fillStyle = '#79ad5c'; ctx.beginPath(); ctx.arc(ox, oy, .85, 0, 7); ctx.fill();
+      const cols = ['#e4524a', '#f2b134', '#e86fa8', '#ffffff']; for (let k = 0; k < 22; k++){ const an = k / 22 * Math.PI * 2; ctx.fillStyle = cols[k % 4]; ctx.beginPath(); ctx.arc(ox + Math.cos(an) * .7, oy + Math.sin(an) * .7, .04, 0, 7); ctx.fill(); }
+      const wg = ctx.createRadialGradient(ox - .05, oy - .05, .02, ox, oy, .32); wg.addColorStop(0, '#9fd3f0'); wg.addColorStop(1, '#4f93c4');
+      ctx.fillStyle = '#c9c0a4'; ctx.beginPath(); ctx.arc(ox, oy, .36, 0, 7); ctx.fill(); ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(ox, oy, .3, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(ox, oy, .07 + .02 * Math.sin(now / 300), 0, 7); ctx.fill();
+      ctx.restore();
+      continue;
+    }
     const x = c % W, y = (c / W) | 0; if (x < vx0 - 2 || x > vx1 + 2 || y < vy0 - 2 || y > vy1 + 2) continue;
     const ox = x + .5, oy = y + .5;
     ctx.save(); ctx.beginPath(); ctx.rect(x - 1, y - 1, 3, 3); ctx.clip();
@@ -5708,6 +5866,7 @@ function draw(now){
   for (const b of S.buildings) if ((b.type === 'bigpark' || b.type === 'amuse') && (b.y < vy0 - 3 || b.x < vx0 - 6) && b.x + fwOf(b) >= vx0 && b.y + fhOf(b) >= vy0 && b.x <= vx1 && b.y <= vy1) (b.type === "amuse" ? drawAmuseGround : drawBigPark)(b, now);
   for (let y = Math.max(0, vy0 - 3); y <= vy1; y++) for (let x = Math.max(0, vx0 - 6); x <= vx1; x++) drawGround(x, y, idx(x, y), now);
   drawAvenues(vx0, vy0, vx1, vy1);
+  drawAvBends(vx0, vy0, vx1, vy1);
   drawRoundabouts(vx0, vy0, vx1, vy1, now);
   drawBigCurves(vx0, vy0, vx1, vy1);
   drawDriveways(vx0, vy0, vx1, vy1, now);
