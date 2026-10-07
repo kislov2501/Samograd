@@ -762,6 +762,107 @@ function route(fromB, toB, veh){
   const r = (veh && bfs(ea, eb, true)) || bfs(ea, eb); if (!r) return [ta, tb];
   return [ta, ...r, tb];
 }
+/* ---------- пешеходы: тротуары и переходы ---------- */
+let pedKey = '', pedS = null, pedBox = null;
+function pedRefresh(){
+  junctionIds();
+  const key = jcKey + '|' + (S.rbList ? S.rbList.length : 0);
+  if (pedBox && pedS === S && pedKey === key) return;
+  pedKey = key; pedS = S; pedBox = new Uint8Array(W * H);
+  for (const c of S.rbList || []){
+    const cx = c % W, cy = (c / W) | 0, big = S.rb[c] === 2, a = big ? 2 : 1;
+    for (let y = cy - 1; y <= cy + a; y++) for (let x = cx - 1; x <= cx + a; x++) if (inb(x, y)) pedBox[idx(x, y)] = 1;
+  }
+}
+/* зебра стоит на ребре клетки i в сторону (dx,dy): у руки перекрёстка и на подходе к кольцу; внутри кольца переходов нет */
+function isCrossing(i, dx, dy){
+  if (!S.road[i]) return false;
+  const x = i % W, y = (i / W) | 0, nx = x + dx, ny = y + dy; if (!inb(nx, ny)) return false;
+  const n = idx(nx, ny); if (!S.road[n]) return false;
+  pedRefresh(); if (pedBox[i] || pedBox[n]) return false;
+  if (jFlag[n] === 1) return false;
+  if (jFlag[i] === 1) return true;
+  const bx = x - dx, by = y - dy; return inb(bx, by) && pedBox[idx(bx, by)] === 1 && !!S.road[idx(bx, by)];
+}
+const pedRoad = (x, y) => x >= 0 && y >= 0 && x < W && y < H && !!S.road[y * W + x];
+/* ребро между углами сетки: 0 нет, 1/2 тротуар (дорога с меньшей/большей стороны), 3/4 переход (владелец с меньшей/большей стороны) */
+function pedEdge(ex, ey, h){
+  const x1 = h ? ex : ex - 1, y1 = h ? ey - 1 : ey, a = pedRoad(x1, y1), b = pedRoad(ex, ey);
+  if (a !== b) return a ? 1 : 2;
+  if (!a) return 0;
+  const i1 = y1 * W + x1, i2 = ey * W + ex;
+  if (isCrossing(i1, h ? 0 : 1, h ? 1 : 0)) return 3;
+  if (isCrossing(i2, h ? 0 : -1, h ? -1 : 0)) return 4;
+  return 0;
+}
+const PW = W + 1, pedG = new Float32Array(PW * (H + 1)), pedP = new Int32Array(PW * (H + 1)), pedSt = new Int32Array(PW * (H + 1));
+let pedN = 0, pedHeapK = [], pedHeapV = [];
+function pedPush(f, v){
+  let i = pedHeapK.length; pedHeapK.push(f); pedHeapV.push(v);
+  while (i > 0){ const pa = (i - 1) >> 1; if (pedHeapK[pa] <= f) break; pedHeapK[i] = pedHeapK[pa]; pedHeapV[i] = pedHeapV[pa]; i = pa; }
+  pedHeapK[i] = f; pedHeapV[i] = v;
+}
+function pedPop(){
+  const v0 = pedHeapV[0], fl = pedHeapK.pop(), vl = pedHeapV.pop(), n = pedHeapK.length;
+  if (n){
+    let i = 0;
+    for (;;){ let c = 2 * i + 1; if (c >= n) break; if (c + 1 < n && pedHeapK[c + 1] < pedHeapK[c]) c++; if (pedHeapK[c] >= fl) break; pedHeapK[i] = pedHeapK[c]; pedHeapV[i] = pedHeapV[c]; i = c; }
+    pedHeapK[i] = fl; pedHeapV[i] = vl;
+  }
+  return v0;
+}
+/* маршрут пешехода по тротуарам: возвращает плоский массив точек [x,y,...] или null */
+function pedRoute(fromB, toB, p){
+  const A = S.buildings[fromB], B = S.buildings[toB], ea = entry(A), eb = entry(B);
+  if (ea < 0 || eb < 0) return null;
+  const ex = ea % W, ey = (ea / W) | 0, tx = eb % W, ty = (eb / W) | 0;
+  const ax = A.x + (fwOf(A) >> 1) + .5, ay = A.y + (fhOf(A) >> 1) + .5, bx = B.x + (fwOf(B) >> 1) + .5, by = B.y + (fhOf(B) >> 1) + .5;
+  /* от здания до тротуара идём только по земле: отрезок не должен резать проезжую часть */
+  const clear = (qx, qy, vx, vy) => {
+    for (let t = .1; t < .96; t += .1){
+      const px = qx + (vx - qx) * t, py = qy + (vy - qy) * t, fx = px - Math.floor(px), fy = py - Math.floor(py);
+      if (pedRoad(Math.floor(px), Math.floor(py)) && fx > .2 && fx < .8 && fy > .2 && fy < .8) return false;
+    }
+    return true;
+  };
+  const hh = (vx, vy) => Math.max(0, Math.abs(vx - tx - .5) + Math.abs(vy - ty - .5) - 1);
+  let goal = -1;
+  for (let strict = 1; strict >= 0 && goal < 0; strict--){
+    pedN++; pedHeapK.length = 0; pedHeapV.length = 0;
+    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]){
+      if (strict && !clear(ax, ay, ex + dx, ey + dy)) continue;
+      const v = (ey + dy) * PW + ex + dx; pedSt[v] = pedN; pedG[v] = (Math.abs(ex + dx - ax) + Math.abs(ey + dy - ay)) * .5; pedP[v] = -1;
+      pedPush(pedG[v], v);
+    }
+  while (pedHeapK.length){
+    const v = pedPop(), vx = v % PW, vy = (v / PW) | 0;
+    if (vx >= tx && vx <= tx + 1 && vy >= ty && vy <= ty + 1 && (!strict || clear(bx, by, vx, vy))){ goal = v; break; }
+    const g = pedG[v];
+    for (let k = 0; k < 4; k++){
+      let nx = vx, ny = vy, ex2, ey2, h;
+      if (k === 0){ nx++; ex2 = vx; ey2 = vy; h = 1; } else if (k === 1){ nx--; ex2 = nx; ey2 = vy; h = 1; }
+      else if (k === 2){ ny++; ex2 = vx; ey2 = vy; h = 0; } else { ny--; ex2 = vx; ey2 = ny; h = 0; }
+      if (nx < 0 || ny < 0 || nx > W || ny > H) continue;
+      const c = pedEdge(ex2, ey2, h); if (!c) continue;
+      const nv = ny * PW + nx, ng = g + (c > 2 ? 1.6 : 1);
+      if (pedSt[nv] === pedN && pedG[nv] <= ng) continue;
+      pedSt[nv] = pedN; pedG[nv] = ng; pedP[nv] = v; pedPush(ng + hh(nx, ny), nv);
+    }
+  }
+  }
+  if (goal < 0) return null;
+  const vs = []; for (let v = goal; v !== -1; v = pedP[v]) vs.push(v); vs.reverse();
+  const ins = .07 + hash(p.id * 29 + 3) * .06, pts = [ax, ay];
+  const add = (x, y) => { const n = pts.length; if (Math.abs(pts[n - 2] - x) > 1e-4 || Math.abs(pts[n - 1] - y) > 1e-4) pts.push(x, y); };
+  for (let k = 0; k + 1 < vs.length; k++){
+    const u = vs[k], w = vs[k + 1], ux = u % PW, uy = (u / PW) | 0, wx = w % PW, wy = (w / PW) | 0, h = uy === wy ? 1 : 0;
+    const c = pedEdge(h ? Math.min(ux, wx) : ux, h ? uy : Math.min(uy, wy), h), sg = (c & 1 ? -1 : 1) * ins;
+    add(ux + (h ? 0 : sg), uy + (h ? sg : 0)); add(wx + (h ? 0 : sg), wy + (h ? sg : 0));
+  }
+  add(bx, by);
+  return pts;
+}
+const WALK = new Map();
 function wp(p, k){ return [k % W + .5 + p.off, ((k / W) | 0) + .5 + p.off]; }
 function goTo(p, bid, until, act, walkAct){
   p.sleep = false;
@@ -770,10 +871,12 @@ function goTo(p, bid, until, act, walkAct){
   p.path = route(p.loc, bid); p.pi = 0; p.prog = 0; p.st = 'walk';
   p.car = hasCar(p) && p.path.length >= 7;
   if (p.car){ p.path = route(p.loc, bid, true); addFlow(p.path); }
+  WALK.delete(p.id);
+  if (!p.car){ const w = pedRoute(p.loc, bid, p); if (w) WALK.set(p.id, { s: S, d: bid, w, i: 0 }); }
   p.dest = bid; p.du = until; p.da = act; p.act = walkAct || ('Идёт · ' + S.buildings[bid].name);
   if (p.car) p.act = p.act.replace(/^Идёт/, 'Едет');
 }
-function arrive(p){ p.pk = !!p.car && ['supermarket','yard'].includes((S.buildings[p.dest] || {}).type); p.car = false; p.st = 'in'; p.loc = p.dest; p.path = null; p.until = Math.max(p.du, S.t + 20); p.act = p.da; }
+function arrive(p){ WALK.delete(p.id); p.pk = !!p.car && ['supermarket','yard'].includes((S.buildings[p.dest] || {}).type); p.car = false; p.st = 'in'; p.loc = p.dest; p.path = null; p.until = Math.max(p.du, S.t + 20); p.act = p.da; }
 let REAL = false;
 function speedOf(p){ return REAL ? (p.car ? 20 : p.age < 12 ? 2.8 : p.age >= 70 ? 2.3 : 3.3) : (p.car ? 1.15 : p.age < 12 ? 0.38 : p.age >= 70 ? 0.32 : 0.45); }
 function hasCar(p){ return p.age >= 18 && p.age < 80 && hash(p.id * 17 + 5) < .6; }
@@ -890,6 +993,13 @@ function updatePerson(p, dt){
   p.mood += (clamp(tgt, 0, 100) - p.mood) * Math.min(1, hrs * 0.4);
 
   if (p.st === 'walk'){
+    const we = !p.car && WALK.get(p.id);
+    if (we && we.s === S && we.d === p.dest){
+      const w = we.w, n = w.length / 2 - 1; p.prog += speedOf(p) * dt;
+      while (we.i < n){ const a = we.i * 2, L = Math.hypot(w[a + 2] - w[a], w[a + 3] - w[a + 1]) || .001; if (p.prog >= L){ p.prog -= L; we.i++; } else break; }
+      if (we.i >= n) arrive(p);
+      return;
+    }
     if (!(p.car && ((typeof carBlocked === 'function' && carBlocked(p)) || redAhead(p, wp, speedOf(p) * dt)))) p.prog += speedOf(p) * dt;
     while (p.pi < p.path.length - 1){
       const a = wp(p, p.path[p.pi]), b = wp(p, p.path[p.pi + 1]);
@@ -1049,6 +1159,12 @@ function waterDist(){
   }
   return d;
 }
+/* a new tile never lies right beside a parallel street: there is always at least one tile between streets */
+function sideRoad(x, y, dir){
+  const px = dir[1], py = dir[0];
+  for (const sg of [1, -1]){ const nx = x + px * sg, ny = y + py * sg; if (inb(nx, ny) && S.road[idx(nx, ny)]) return true; }
+  return false;
+}
 function blocky(x, y){
   const R_ = (a, b) => inb(a, b) && S.road[idx(a, b)];
   for (const dx of [-1, 0]) for (const dy of [-1, 0]){
@@ -1120,7 +1236,7 @@ function roadRoom(x0, y0, dir, kind){
     const x = x0 + dir[0] * k, y = y0 + dir[1] * k;
     if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1 || !inL(x, y)) break;
     const i = idx(x, y); if (S.road[i]){ ok = k > 0; break; }
-    if (S.bld[i] >= 0 || S.terrain[i] === 1 || waterRoadNear(x, y) || blocky(x, y)) break;
+    if (S.bld[i] >= 0 || S.terrain[i] === 1 || waterRoadNear(x, y) || blocky(x, y) || sideRoad(x, y, dir)) break;
     if (k > 0 && kind === 'line' && !(dir[0] === 0 ? lineV(x, y) : lineH(x, y))) break;
     S.road[i] = 1; tmp.push(i);
     if (k === 1 || (kind === 'link' && (lineV(x, y) || lineH(x, y)))){ ok = true; break; }
@@ -1171,7 +1287,7 @@ function growRoad_(toWater){
     if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1 || !inL(x, y)) break;
     const i = idx(x, y); if (S.bld[i] >= 0 || S.road[i] || S.terrain[i] === 1 || waterRoadNear(x, y)) break;
     if (k > 0 && best.kind === 'line' && !(best.dir[0] === 0 ? lineV(x, y) : lineH(x, y))) break;
-    if (blocky(x, y)) break;
+    if (blocky(x, y) || sideRoad(x, y, best.dir)) break;
     if (S.money < 15) break;
     S.money -= 15; S.road[i] = 1; tiles.push(i);
     if (best.kind === 'link' && (lineV(x, y) || lineH(x, y))) break;
@@ -2279,7 +2395,7 @@ function tickRoundabouts(){
     S.rb[w.c] = w.big ? 2 : 1; S.rbList.push(w.c); roadsVer++;
     if (w.big) for (const d of [1, W, W + 1]) S.rb[w.c + d] = 3;
     const x = w.c % W, y = (w.c / W) | 0;
-    log('build', '🔄 Открыли ' + (w.big ? 'большое кольцо на 4 полосы' : 'круговое движение') + ' на перекрёстке улиц ' + hStreet(y, x) + ' и ' + vStreet(x, y) + ': светофор сняли, машины больше не стоят на красный');
+    log('build', '🔄 Открыли ' + (w.big ? 'двухполосное кольцо' : 'однополосное кольцо') + ' на перекрёстке улиц ' + hStreet(y, x) + ' и ' + vStreet(x, y) + ': светофор сняли, машины больше не стоят на красный');
     return false;
   });
 }
@@ -2316,7 +2432,7 @@ function startRoundabout4(F, why){
   for (const k of F.cells){ if (S.bld[k] >= 0) continue; const r = placeB('rbring', k % W, (k / W) | 0, true, {}); r.name = 'Круговое движение'; r.rc = F.top; if (S.terrain[k] === 2) S.terrain[k] = 0; }
   if (!S.rbw) S.rbw = [];
   S.rbw.push({c:F.top, big:1, t2:S.t + (1.2 + R() * .6) * DAY});
-  log('build', (why || '🔄 Перекрёсток') + ' улиц ' + hStreet(F.y0, F.x0) + ' и ' + vStreet(F.x0, F.y0) + ': здесь проспект, поэтому строят большое кольцо на 4 полосы' + (demo ? ', вокруг расчищают участки (' + demo + ')' : ''));
+  log('build', (why || '🔄 Перекрёсток') + ' улиц ' + hStreet(F.y0, F.x0) + ' и ' + vStreet(F.x0, F.y0) + ': здесь проспект, поэтому строят двухполосное кольцо' + (demo ? ', вокруг расчищают участки (' + demo + ')' : ''));
   return true;
 }
 function planRoundabout(force){
@@ -2522,10 +2638,11 @@ function shortStubs(){
   }
   return out;
 }
-function mergeParallel(){
+/* two plain 2-lane streets lying right next to each other (runs of tile pairs) */
+function parallelRuns(){
   if (!S.av) S.av = new Array(W * H).fill(0);
-  let n = 0;
   const plain = i => S.road[i] && !S.av[i] && S.terrain[i] !== 1 && !(S.rb && S.rb[i]);
+  const out = [];
   for (const hz of [false, true]){
     const seen = new Uint8Array(W * H);
     for (let y = 1; y < H - 2; y++) for (let x = 1; x < W - 2; x++){
@@ -2534,20 +2651,34 @@ function mergeParallel(){
       let k = a; while (k >= 0 && plain(k) && plain(hz ? k + W : k + 1) && (!hz || ((k / W) | 0) === y)) { run.unshift(k); k -= st; }
       k = a + st; while (k < W * H && plain(k) && plain(hz ? k + W : k + 1) && (!hz || ((k / W) | 0) === y)) { run.push(k); k += st; }
       for (const t of run) seen[t] = 1;
-      if (run.length < 2){
-        const t = run[0], u = hz ? t + W : t + 1, cn = q => hz ? (S.road[q - 1] || S.road[q + 1]) : (S.road[q - W] || S.road[q + W]);
-        if (!(cn(t) && cn(u))) continue;
-      }
-      for (const t of run){ if (hz){ S.av[t] = 3; S.av[t + W] = 4; } else { S.av[t] = 1; S.av[t + 1] = 2; } }
-      n++;
+      if (run.length < 2) continue;
+      out.push({hz, run});
     }
   }
-  if (n){ roadsVer++; S.avN = (S.avN || 0) + 1; }
-  return n;
+  return out;
+}
+/* the extra street is removed (if every house keeps its road); only when that is impossible the pair becomes one avenue */
+function fixParallel(){
+  let cut = 0, merged = 0;
+  for (const {hz, run} of parallelRuns()){
+    const side = hz ? W : 1, other = run.map(t => t + side);
+    if (run.some(t => !S.road[t] || S.av[t]) || other.some(t => !S.road[t] || S.av[t])) continue;
+    const busy = new Set(); for (const w of S.works || []) for (const [i] of w.av) busy.add(i);
+    if (run.some(t => busy.has(t) || busy.has(t + side))) continue;
+    if (cutRoads(run) || cutRoads(other)){ cut++; continue; }
+    for (const t of run){ if (hz){ S.av[t] = 3; S.av[t + W] = 4; } else { S.av[t] = 1; S.av[t + 1] = 2; } }
+    merged++;
+  }
+  if (cut || merged){ roadsVer++; if (merged) S.avN = (S.avN || 0) + 1; }
+  return {cut, merged};
 }
 function repairRings(){
   if (!S.rb || !S.rbList) return;
   let n = 0;
+  /* старые сохранения: допустимы только кольца 1 (однополосное) и 2 (двухполосное); остальное снимаем, перекрёсток остаётся обычным */
+  for (let i = 0; i < S.rb.length; i++) if (S.rb[i] && S.rb[i] !== 1 && S.rb[i] !== 2 && S.rb[i] !== 3){ S.rb[i] = 0; n++; }
+  const okList = S.rbList.filter(c => S.road[c] && (S.rb[c] === 1 || S.rb[c] === 2));
+  if (okList.length !== S.rbList.length){ for (const c of S.rbList) if (!okList.includes(c)) S.rb[c] = 0; S.rbList = okList; n++; }
   for (const c of S.rbList){
     if (S.rb[c] !== 2) continue;
     for (const t of [c, c + 1, c + W, c + W + 1]) if (!S.road[t] && S.terrain[t] !== 1 && S.bld[t] < 0){ S.road[t] = 1; n++; }
@@ -2567,9 +2698,10 @@ function tidyRoads(limit, quiet){
     }
     if (!did) break;
   }
-  const nm2 = mergeParallel();
-  if (nm2 && !quiet) log('build', '🛣 Две узкие улицы, шедшие вплотную друг к другу, объединили в один проспект на 4 полосы с бульваром');
-  if (nm2) nAv += nm2;
+  const fp = fixParallel();
+  if (fp.cut && !quiet) log('build', '🚧 Две улицы шли вплотную друг к другу: лишнюю разобрали, между улицами теперь есть место под застройку');
+  if (fp.merged && !quiet) log('build', '🛣 Две узкие улицы, шедшие вплотную друг к другу, объединили в один проспект');
+  nAv += fp.cut + fp.merged;
   for (const ch of shortStubs()){
     if (nAv + nStub >= limit) break;
     if (ch.some(t => !S.road[t])) continue;
@@ -2903,7 +3035,7 @@ function removeRoadTiles(list){
   }
   roadsVer++;
   for (const b of S.buildings) if (b.e >= 0 && set.has(b.e)) b.e = -1;
-  for (const p of S.people) if (p.st === 'walk' && p.path && p.path.some(k => set.has(k))) p.pi = Math.max(p.pi, p.path.length - 1);
+  for (const p of S.people) if (p.st === 'walk' && p.path && p.path.some(k => set.has(k))){ p.pi = Math.max(p.pi, p.path.length - 1); const we = WALK.get(p.id); if (we) we.i = we.w.length / 2 - 1; }
 }
 function roadLinked(att, skip){
   const arr = [...att]; if (arr.length < 2) return true;
@@ -4255,20 +4387,19 @@ function drawFerrisWheel(b, now){
   for (let k = 0; k < 12; k++){ const a = a0 + k * Math.PI / 6, px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r; ctx.fillStyle = cols[k % 6]; rr(px - .055, py, .11, .1, .02); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(px - .04, py + .02, .08, .03); }
   ctx.fillStyle = '#5b6268'; ctx.beginPath(); ctx.arc(cx, cy, .05, 0, 7); ctx.fill();
 }
-function drawZebras(x, y, i, L, Rr, U, D){
-  if (U && isJ(i - W)) U = false; if (D && isJ(i + W)) D = false; if (L && isJ(i - 1)) L = false; if (Rr && isJ(i + 1)) Rr = false;
+function drawZebras(x, y, i){
   const SW = .17, band = SW, bw = .055, gap = .05;
   ctx.fillStyle = 'rgba(255,255,255,.88)';
-  const span = (side) => {
-    const n = side === 'U' ? i - W : side === 'D' ? i + W : side === 'L' ? i - 1 : i + 1;
-    const lat = side === 'U' || side === 'D' ? [[-1,0],[1,0]] : [[0,-1],[0,1]];
-    const ends = lat.map(([dx, dy]) => (rc(n, dx, dy) || (avOf(n) && n + dx + dy * W === partner(n))) ? 0 : SW);
-    return [ends[0], 1 - ends[1]];
-  };
-  if (U){ const [a, b] = span('U'); for (let k = a + .03; k + bw <= b; k += bw + gap) ctx.fillRect(x + k, y + .015, bw, band - .03); }
-  if (D){ const [a, b] = span('D'); for (let k = a + .03; k + bw <= b; k += bw + gap) ctx.fillRect(x + k, y + 1 - band + .015, bw, band - .03); }
-  if (L){ const [a, b] = span('L'); for (let k = a + .03; k + bw <= b; k += bw + gap) ctx.fillRect(x + .015, y + k, band - .03, bw); }
-  if (Rr){ const [a, b] = span('R'); for (let k = a + .03; k + bw <= b; k += bw + gap) ctx.fillRect(x + 1 - band + .015, y + k, band - .03, bw); }
+  for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]){
+    if (!isCrossing(i, dx, dy)) continue;
+    const n = i + dx + dy * W, lat = dx ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]];
+    const ends = lat.map(([lx, ly]) => (rc(n, lx, ly) || (avOf(n) && n + lx + ly * W === partner(n))) ? 0 : SW);
+    const a = ends[0], b = 1 - ends[1];
+    for (let k = a + .03; k + bw <= b; k += bw + gap){
+      if (dx) ctx.fillRect(dx > 0 ? x + 1 - band + .015 : x + .015, y + k, band - .03, bw);
+      else ctx.fillRect(x + k, dy > 0 ? y + 1 - band + .015 : y + .015, bw, band - .03);
+    }
+  }
 }
 function drawStopLines(x, y, i){
   if (isJ(i)) return;
@@ -5334,7 +5465,7 @@ function drawGround0(x, y, i, now){
   else if ((L || Rr) && !U && !D){ ctx.fillRect(x + .3, y + .49, .4, .03); }
   else if ((U || D) && !L && !Rr){ ctx.fillRect(x + .49, y + .3, .03, .4); }
   if (AV) drawMedian(x, y, i, AV);
-  if (isJ(i)){ if (hasLight(i)) drawZebras(x, y, i, L, Rr, U, D); } else drawStopLines(x, y, i);
+  drawZebras(x, y, i); if (!isJ(i)) drawStopLines(x, y, i);
   if (isStop(i)) drawStop(x, y, i, L && Rr, now);
   if (hasLight(i)) drawLights(x, y, i);
   else { const lp = lampOf(i); if (lp) drawLamp(lp[0], lp[1]); }
@@ -5482,7 +5613,7 @@ function rbAdjust(x, y, a, lane0){
     if (d > 2.1 || d < 1e-4) continue;
     const R0 = ped ? 2.0 : 1.55 + (lane0 > 0 ? .2 : -.15);
     if (d >= R0) return [x, y, a];
-    const k = Math.min(1, (R0 - d) / .6), ux = vx / d, uy = vy / d, nd = d + (R0 - d) * k, tang = Math.atan2(uy, ux) + Math.PI / 2;
+    const k = Math.min(1, (R0 - d) / .6), ux = vx / d, uy = vy / d, nd = d + (R0 - d) * k, tang = Math.atan2(uy, ux) - Math.PI / 2;
     return [ox + ux * nd, oy + uy * nd, ped ? a : a + Math.atan2(Math.sin(tang - a), Math.cos(tang - a)) * k * .8];
   }
   const tx = Math.floor(x), ty = Math.floor(y);
@@ -5493,7 +5624,7 @@ function rbAdjust(x, y, a, lane0){
     if (d >= R0 || d < 1e-4) return [x, y, a];
     const k = Math.min(1, (R0 - d) / .5), ux = vx / d, uy = vy / d;
     const nx = ox + ux * (d + (R0 - d) * k), ny = oy + uy * (d + (R0 - d) * k);
-    const tang = Math.atan2(uy, ux) + Math.PI / 2;
+    const tang = Math.atan2(uy, ux) - Math.PI / 2;
     return [nx, ny, ped ? a : a + Math.atan2(Math.sin(tang - a), Math.cos(tang - a)) * k * .8];
   }
   return [x, y, a];
@@ -5742,7 +5873,6 @@ function updateTraffic(dt){
   if (tps.length && nx < Math.min(4 + tps.length * 4, Math.floor(S.people.length / 60)) && R() < dt * .05 * RF){ const tp = pick(tps), e = entry(tp); if (e >= 0){ const v = {kind:'taxi', path:[e, e], pi:0, prog:0, sp:1, col:'#f5c518', base:tp.id}; if (patrol(v)) traffic.push(v); } }
   for (const v of traffic.slice()){
     if (v.wait > 0){ v.wait -= dt; continue; }
-    if (R() < dt * .03) v.o = !v.o;
     if (!v.parked && carBlocked(v)) continue;
     if (!v.siren && redAhead(v, (vv, k) => tc(k), v.sp * VS * dt)) continue;
     if (v.parked){
@@ -5967,6 +6097,10 @@ function drawBeach(b, now){
 }
 function personPos(p, now){
   if (p.st === 'walk' && p.path && p.car && p.pi < p.path.length - (NO_DRIVE.includes((S.buildings[p.dest] || {}).type) ? 2 : 1)) return pose(p.path, p.pi, p.prog, .165, hash(p.id * 3) < .5);
+  if (p.st === 'walk' && !p.car){
+    const we = WALK.get(p.id);
+    if (we && we.s === S && we.d === p.dest){ const w = we.w, a = we.i * 2; if (a + 3 < w.length){ const L = Math.hypot(w[a + 2] - w[a], w[a + 3] - w[a + 1]) || .001, t = Math.min(1, p.prog / L); return [w[a] + (w[a + 2] - w[a]) * t, w[a + 1] + (w[a + 3] - w[a + 1]) * t]; } }
+  }
   if (p.st === 'walk' && p.path && p.pi < p.path.length - 1){
     const q = pose(p.path, p.pi, p.prog, p.off >= 0 ? .41 : -.41); return [q[0], q[1]];
   }
@@ -6471,7 +6605,7 @@ function inspHTML(){
     const deg = [[-1, 0], [1, 0], [0, -1], [0, 1]].filter(rd).length;
     const nm = (hor && ver && deg >= 3) ? 'ул. ' + hStreet(y, x) + ' и ул. ' + vStreet(x, y) : hor && !ver ? 'ул. ' + hStreet(y, x) : ver && !hor ? 'ул. ' + vStreet(x, y) : 'ул. ' + (hor ? hStreet(y, x) : vStreet(x, y));
     const bridge = S.terrain[i] === 1, rb = S.rb && S.rb[i], av = S.av && S.av[i];
-    const kind = rb ? (S.rb[i] === 1 ? 'Кольцевой перекрёсток' : 'Большое кольцо') + (av || S.rb[i] > 1 ? ', 4 полосы' : '') : bridge ? (av ? 'Мост, 4 полосы' : 'Мост, 2 полосы') : av ? 'Проспект, 4 полосы' : 'Улица, 2 полосы';
+    const kind = rb ? (S.rb[i] === 1 ? 'Однополосное кольцо' : 'Двухполосное кольцо') + ', движение против часовой стрелки' : bridge ? (av ? 'Мост, 4 полосы' : 'Мост, 2 полосы') : av ? 'Проспект, 4 полосы' : 'Улица, 2 полосы';
     const jv = S.jam ? S.jam[i] || 0 : 0;
     const traf = jv < 3 ? 'свободно' : jv < 8 ? 'оживлённо' : jv < 20 ? 'плотное движение' : 'пробка';
     const lane = (hor && ver && deg >= 3 ? 'Перекрёсток, ' + deg + ' дороги' : deg === 1 ? 'Тупик' : hor && ver ? 'Поворот' : hor ? 'Прямой участок, вдоль улицы' : 'Прямой участок');
@@ -7092,7 +7226,7 @@ function start(data){
   requestAnimationFrame(t => { lastFrame = t; frame(t); });
   accUI(); cloudInit();
 }
-window.samograd = {hl:hasLight, isJ, cloud:() => ({state:Cloud.state, mode:Cloud.mode, user:Cloud.user, pending:Cloud.pending, msg:Cloud.msg, slots:cloudSlots, lastSync:Cloud.lastSync}), updateTraffic, isStop, drive:driveOf, sprite:b => sprite(b), lim:() => limD, curves:() => { bigCurves(); return bcList; }, traffic:() => traffic, boats:() => boats, select, pick:(x, y) => pickAt(x, y), look:(x, y, z) => { cam.x = x; cam.y = y; if (z) cam.z = z; }};
+window.samograd = {hl:hasLight, personPos, isJ, cloud:() => ({state:Cloud.state, mode:Cloud.mode, user:Cloud.user, pending:Cloud.pending, msg:Cloud.msg, slots:cloudSlots, lastSync:Cloud.lastSync}), updateTraffic, isStop, drive:driveOf, sprite:b => sprite(b), lim:() => limD, curves:() => { bigCurves(); return bcList; }, traffic:() => traffic, boats:() => boats, select, pick:(x, y) => pickAt(x, y), look:(x, y, z) => { cam.x = x; cam.y = y; if (z) cam.z = z; }};
 window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 })();
 </script>
