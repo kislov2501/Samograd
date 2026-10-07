@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Самоград</title>
+<script>
+/* ═══ АККАУНТЫ ИГРОКОВ ═══
+   В claude.ai аккаунт игрока — это его аккаунт Claude, настраивать ничего не нужно.
+   На своём сайте (GitHub Pages и т. п.) аккаунты работают через Firebase:
+   замените null на настройки вашего проекта Firebase (пошагово — в README.md), например:
+   window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || {
+     apiKey: "AIza...", authDomain: "samograd-12345.firebaseapp.com",
+     projectId: "samograd-12345", appId: "1:123:web:abc"
+   }; */
+window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || null;
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500;700&display=swap">
@@ -155,6 +166,31 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 .slot .sl-main em.warn{color:var(--bad)}
 .slot .del{position:absolute;right:16px;top:16px}
 
+/* account */
+.acc-btn{padding:4px 12px 4px 5px;gap:7px;font-weight:600;font-size:13px;color:var(--ink);max-width:190px}
+.acc-btn:hover{border-color:var(--accent)}
+.acc-btn .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--raise);font-size:13px;flex:none}
+.acc-btn.in .av{background:var(--accent);color:var(--accent-ink)}
+.acc-btn #accName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc-btn.busy .av{animation:accpulse 1.2s ease-in-out infinite}
+@keyframes accpulse{50%{opacity:.45}}
+.menu.acc{width:min(460px,100%)}
+.acc-form{display:flex;flex-direction:column;gap:10px}
+.acc-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.acc-form input{background:var(--raise);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;color:var(--ink)}
+.acc-form input:focus{border-color:var(--accent);outline:none}
+.acc-err{color:var(--bad);font-size:13px;min-height:18px}
+.acc-ok{color:var(--good);font-size:13px}
+.acc-link{border:0;background:transparent;color:var(--accent);padding:0;font-size:13px;text-decoration:underline;text-underline-offset:3px;align-self:flex-start}
+.acc-me{display:flex;align-items:center;gap:12px}
+.acc-me .big{width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--display);font-size:22px;font-weight:700;flex:none}
+.acc-me b{font-size:16px;font-weight:600;overflow-wrap:anywhere}
+.acc-me span{display:block;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.acc-box{background:var(--raise);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.acc-box.warn{border-color:var(--accent)}
+.acc-acts{display:flex;flex-wrap:wrap;gap:8px}
+.acc-note{font-size:12px;color:var(--muted)}
+
 /* map layers: a button that opens categories, each category opens its own buttons */
 .layers{position:absolute;right:16px;bottom:154px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;z-index:5}
 .lay-row{display:flex;align-items:flex-end;gap:8px}
@@ -179,6 +215,8 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 @media (max-width:820px){
   .app{grid-template-columns:minmax(0,1fr);grid-template-rows:58% 42%}
   .lay-btn b{display:none}
+  .acc-btn{padding:4px}
+  .acc-btn #accName{display:none}
   .map.lay-open .legend{display:none}
   .panel{border-left:0;border-top:1px solid var(--line);padding-inline:16px}
   .hint{display:none}
@@ -192,6 +230,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
     <canvas id="cv" aria-label="Карта города, жители двигаются сами"></canvas>
     <div class="hud">
       <button class="chip menu-btn" id="menuBtn" aria-label="Меню и сохранения" title="Меню (Esc)">☰ Меню</button>
+      <button class="chip acc-btn" id="accBtn" aria-label="Аккаунт" title="Аккаунт и сохранения в облаке"><span class="av" id="accAv">👤</span><span id="accName">Войти</span></button>
       <div class="chip clock"><span id="clockDay">День 1 · Пн</span><b id="clockTime">07:00</b></div>
       <div class="chip speed" role="group" aria-label="Скорость времени">
         <button id="sp0" data-speed="0" aria-pressed="false" title="Пауза (пробел)">❚❚</button>
@@ -281,6 +320,15 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
   </aside>
 </div>
 
+<div class="menu-back" id="acc" hidden role="dialog" aria-modal="true" aria-labelledby="accTitle">
+  <div class="menu acc">
+    <div class="menu-h">
+      <div><div class="eyebrow">Самоград</div><h2 id="accTitle">Аккаунт</h2><div class="sub" id="accSub">Ваш город и все сохранения — на любом устройстве</div></div>
+      <button class="x" id="accClose" aria-label="Закрыть">×</button>
+    </div>
+    <div id="accBody"></div>
+  </div>
+</div>
 <div class="menu-back" id="menu" hidden role="dialog" aria-modal="true" aria-labelledby="menuTitle">
   <div class="menu">
     <div class="menu-h">
@@ -2334,7 +2382,7 @@ function load(str){
   const nb = fixBridges(999, true); if (nb) log('build', '🌉 Мэрия разобрала неправильные мосты (' + nb + '): вдоль реки, с поворотами и недостроенные');
   if (!S.lim){ S.lim = {x0:1, y0:1, x1:W - 1, y1:H - 1}; S.limN = STAGES.length - 1; }
 }
-function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); lastAutoSave = Date.now(); } catch(e){} }
+function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); lastAutoSave = Date.now(); localStorage.setItem(SAVE_KEY + '-at', String(lastAutoSave)); } catch(e){} }
 function nowTod(){ const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 + d.getMilliseconds() / 60000; }
 function enterReal(simulate){
   let target = Math.floor(S.t / DAY) * DAY + nowTod();
@@ -5043,6 +5091,241 @@ for (const b of document.querySelectorAll('#logFilters button')) b.onclick = () 
 };
 $('search').addEventListener('input', () => renderPanel(true));
 
+/* ---------- accounts & cloud saves ----------
+   claude.ai: the player's Claude account (db + user capabilities), nothing to set up.
+   Own site (GitHub Pages): Firebase email/password accounts + Firestore, config at the top of the file.
+   A save is packed (gzip+base64) and split into chunks: meta at <root>/saves/<slot>, data at <root>/saves/<slot>/chunks/<k>. */
+const Cloud = {mode:null, state:'off', user:null, err:'', st:null, fb:null, lastSync:0, pending:null, busy:false, regNick:'', view:'login', msg:'', ok:''};
+const CHUNK = {claude:200000, firebase:700000};
+let cloudSlots = null, startedFresh = false;
+const cloudIn = () => Cloud.state === 'in' && !!Cloud.user;
+function storeOf(api){ return {
+  get:async p => { const s = await api.doc(p).get(); return s.exists ? s.data() : null; },
+  set:(p, o) => api.doc(p).set(o),
+  del:p => api.doc(p).delete(),
+  list:async p => (await api.collection(p).get()).docs.map(d => Object.assign({}, d.data(), {id:d.id})),
+}; }
+const cloudRoot = () => Cloud.mode === 'claude' ? 'data/users/' + Cloud.user.uid + '/game' : 'players/' + Cloud.user.uid;
+async function cloudList(){ return (await Cloud.st.list(cloudRoot() + '/saves')).filter(m => m.at && m.chunks); }
+async function cloudPut(id, meta, data){
+  const base = cloudRoot() + '/saves/' + id, size = CHUNK[Cloud.mode], n = Math.max(1, Math.ceil(data.length / size));
+  const ver = Date.now() + '-' + ((Math.random() * 1e9) | 0);
+  const old = await Cloud.st.get(base).catch(() => null);
+  for (let k = 0; k < n; k++) await Cloud.st.set(base + '/chunks/' + k, {d:data.slice(k * size, (k + 1) * size), ver});
+  const m = Object.assign({}, meta, {id, chunks:n, ver, len:data.length});
+  await Cloud.st.set(base, m);
+  if (old && old.chunks > n) for (let k = n; k < old.chunks; k++) await Cloud.st.del(base + '/chunks/' + k).catch(() => {});
+  if (cloudSlots){ cloudSlots = cloudSlots.filter(x => x.id !== id); cloudSlots.push(m); }
+  Cloud.lastSync = Date.now();
+  return m;
+}
+async function cloudGet(id){
+  const base = cloudRoot() + '/saves/' + id;
+  for (let attempt = 0; attempt < 3; attempt++){
+    const m = await Cloud.st.get(base); if (!m) return null;
+    const parts = await Promise.all(Array.from({length:m.chunks}, (_, k) => Cloud.st.get(base + '/chunks/' + k)));
+    if (parts.every(x => x && x.ver === m.ver)) return parts.map(x => x.d).join('');
+    await new Promise(r => setTimeout(r, 400));
+  }
+  throw new Error('torn');
+}
+async function cloudDel(id){
+  const base = cloudRoot() + '/saves/' + id, m = await Cloud.st.get(base);
+  if (m) for (let k = 0; k < (m.chunks || 1); k++) await Cloud.st.del(base + '/chunks/' + k).catch(() => {});
+  await Cloud.st.del(base);
+  if (cloudSlots) cloudSlots = cloudSlots.filter(x => x.id !== id);
+}
+function saveMeta(id, name){ return {id, name:name || (S.name + ', день ' + (day() + 1)), city:S.name, seed:S.seed, day:day() + 1, pop:S.people.length, at:Date.now(), thumb:makeThumb()}; }
+function cloudError(e){
+  const c = (e && (e.code || e.message)) || '';
+  const M = {'auth/invalid-email':'Неверный адрес почты', 'auth/missing-email':'Введите почту', 'auth/missing-password':'Введите пароль', 'auth/weak-password':'Пароль слишком короткий: нужно минимум 6 символов',
+    'auth/email-already-in-use':'Аккаунт с этой почтой уже есть — войдите в него', 'auth/invalid-credential':'Неверная почта или пароль', 'auth/invalid-login-credentials':'Неверная почта или пароль',
+    'auth/wrong-password':'Неверная почта или пароль', 'auth/user-not-found':'Аккаунта с такой почтой нет — зарегистрируйтесь', 'auth/too-many-requests':'Слишком много попыток. Подождите пару минут',
+    'auth/network-request-failed':'Нет связи с сервером. Проверьте интернет', 'auth/operation-not-allowed':'Вход по почте выключен в Firebase (см. README, шаг 2)',
+    'auth/unauthorized-domain':'Этот сайт не добавлен в Firebase → Authentication → Settings → Authorized domains', 'permission-denied':'Облако не пустило: проверьте правила Firestore (README, шаг 5)',
+    'unavailable':'Облако сейчас недоступно, попробуйте позже', 'quota_exceeded':'В облаке закончилось место для сохранений', 'resource_exhausted':'Слишком часто. Подождите минуту', 'invalid_argument':'Здесь нельзя сохранять в облако: у вас доступ только на просмотр'};
+  return M[c] || M[c.replace(/^firestore\//, '')] || ('Не получилось (' + (c || 'ошибка') + ')');
+}
+function loadScript(src){ return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('load ' + src)); document.head.appendChild(el); }); }
+async function cloudInit(){
+  if (window.claude && typeof window.claude.use === 'function'){
+    Cloud.state = 'loading'; accUI();
+    let db = null, us = null;
+    try { [db, us] = await Promise.all([window.claude.use('db'), window.claude.use('user')]); } catch(e){}
+    const uid = us ? await us.id() : null;
+    if (db && uid){
+      const me = await us.me();
+      Cloud.mode = 'claude'; Cloud.st = storeOf(db); Cloud.user = {uid, email:null, nick:me.name || 'Мэр'}; Cloud.state = 'in';
+      await afterLogin(); return;
+    }
+    Cloud.state = 'off'; Cloud.mode = 'claude-none'; accUI(); return;
+  }
+  if (window.SAMOGRAD_FIREBASE && window.SAMOGRAD_FIREBASE.apiKey) return fbInit();
+  Cloud.state = 'off'; accUI();
+}
+async function fbInit(){
+  Cloud.state = 'loading'; Cloud.mode = 'firebase'; accUI();
+  try {
+    if (!window.firebase){
+      const V = '10.12.2';
+      for (const m of ['app', 'auth', 'firestore']){
+        try { await loadScript('https://cdn.jsdelivr.net/npm/firebase@' + V + '/firebase-' + m + '-compat.js'); }
+        catch(e){ await loadScript('https://www.gstatic.com/firebasejs/' + V + '/firebase-' + m + '-compat.js'); }
+      }
+    }
+    if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(window.SAMOGRAD_FIREBASE);
+    Cloud.fb = {auth:firebase.auth(), fs:firebase.firestore()};
+    Cloud.st = storeOf(Cloud.fb.fs); Cloud.state = 'out'; accUI();
+    Cloud.fb.auth.onAuthStateChanged(async u => {
+      if (u){
+        if (Cloud.user && Cloud.user.uid === u.uid) return;
+        Cloud.user = {uid:u.uid, email:u.email, nick:Cloud.regNick || u.displayName || (u.email || 'мэр').split('@')[0]}; Cloud.state = 'in';
+        await afterLogin();
+      } else { Cloud.user = null; cloudSlots = null; Cloud.pending = null; Cloud.state = 'out'; accUI(); renderSaves(); }
+    });
+  } catch(e){ Cloud.state = 'error'; Cloud.err = 'Не удалось подключиться к облаку. Проверьте интернет и обновите страницу'; accUI(); }
+}
+const isFreshLocal = () => day() < 1 || (startedFresh && day() < 2);
+async function afterLogin(){
+  Cloud.busy = true; accUI();
+  try {
+    const prof = await Cloud.st.get(cloudRoot());
+    if (prof && prof.nick) Cloud.user.nick = prof.nick;
+    else await Cloud.st.set(cloudRoot(), {nick:Cloud.regNick || Cloud.user.nick, created:Date.now()});
+    if (Cloud.regNick){ Cloud.user.nick = Cloud.regNick; Cloud.regNick = ''; }
+    cloudSlots = await cloudList();
+    const auto = cloudSlots.find(m => m.id === 'auto');
+    const localAt = (() => { try { return +(localStorage.getItem(SAVE_KEY + '-at') || 0); } catch(e){ return 0; } })();
+    if (!auto){ await cloudAutoSave(true); toast('Город ' + S.name + ' теперь хранится в вашем аккаунте'); }
+    else if (auto.seed === S.seed && auto.city === S.name){
+      if (auto.at > localAt + 5000) await loadCloud('auto', 'прогресс из аккаунта'); else await cloudAutoSave(true);
+    } else if (isFreshLocal()) await loadCloud('auto', 'прогресс из аккаунта');
+    else { Cloud.pending = auto; openAcc(); }
+  } catch(e){ Cloud.msg = cloudError(e); }
+  Cloud.busy = false; accUI(); renderSaves();
+}
+async function loadCloud(id, label){
+  try {
+    const raw = await cloudGet(id); if (!raw){ toast('Это сохранение пропало из аккаунта', true); return false; }
+    const ok = applyState(await unpack(raw), label || (cloudSlots && (cloudSlots.find(m => m.id === id) || {}).name) || '');
+    if (ok && id !== 'auto') cloudAutoSave(true);
+    return ok;
+  } catch(e){ toast(cloudError(e), true); return false; }
+}
+/* before another city replaces the current one, keep the current one in the account as "Прошлый город" */
+async function stashPrev(){ if (!cloudIn()) return; try { await cloudPut('prev', saveMeta('prev', 'Прошлый город: ' + S.name), await pack(JSON.stringify(S))); } catch(e){} }
+async function cloudAutoSave(force){
+  if (!cloudIn() || Cloud.pending || (Cloud.saving && !force)) return;
+  Cloud.saving = true;
+  try { await cloudPut('auto', saveMeta('auto', 'Автосохранение'), await pack(JSON.stringify(S))); Cloud.msg = ''; }
+  catch(e){ Cloud.msg = cloudError(e); }
+  Cloud.saving = false; accUI();
+}
+/* ---- account window ---- */
+function openAcc(){ Cloud.ok = ''; $('acc').hidden = false; accUI(); }
+function closeAcc(){ $('acc').hidden = true; }
+function accUI(){
+  const btn = $('accBtn');
+  btn.classList.toggle('in', cloudIn()); btn.classList.toggle('busy', Cloud.state === 'loading' || Cloud.busy || !!Cloud.saving);
+  $('accAv').textContent = cloudIn() ? (Cloud.user.nick || '?').trim().charAt(0).toUpperCase() || '☁' : '👤';
+  $('accName').textContent = cloudIn() ? Cloud.user.nick : Cloud.state === 'loading' ? 'Облако…' : Cloud.state === 'out' ? 'Войти' : 'Аккаунт';
+  if ($('acc').hidden) return;
+  const body = $('accBody'), A = esc;
+  let h = '';
+  if (Cloud.state === 'loading') h = '<p class="acc-note">Подключаемся к облаку…</p>';
+  else if (Cloud.state === 'error') h = '<div class="acc-box warn">' + A(Cloud.err) + '</div><div class="acc-acts"><button class="mini primary big" data-a="retry">Попробовать снова</button></div>';
+  else if (Cloud.state === 'off'){
+    h = Cloud.mode === 'claude-none'
+      ? '<div class="acc-box">Сохранения в облако работают, когда вы открываете игру, войдя в свой аккаунт Claude. Сейчас город сохраняется только в этом браузере.</div>'
+      : '<div class="acc-box">На этом сайте аккаунты пока не подключены: город сохраняется только в этом браузере. Чтобы перенести его на другое устройство, откройте Меню → «Файл и код».</div><p class="acc-note">Владельцу игры: как включить аккаунты — в README.md репозитория (Firebase, 5 минут).</p>';
+  } else if (Cloud.state === 'out'){
+    const reg = Cloud.view === 'reg', fg = Cloud.view === 'forgot';
+    h = '<div class="tabs" role="tablist"><button role="tab" data-a="v-login" aria-selected="' + (!reg && !fg) + '">Вход</button><button role="tab" data-a="v-reg" aria-selected="' + reg + '">Регистрация</button></div>' +
+      '<form class="acc-form" id="accForm" novalidate>' +
+      (reg ? '<label>Имя мэра<input id="fNick" maxlength="24" autocomplete="nickname" placeholder="Например, Анна" required></label>' : '') +
+      '<label>Почта<input id="fEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com" required></label>' +
+      (fg ? '' : '<label>Пароль<input id="fPass" type="password" autocomplete="' + (reg ? 'new-password' : 'current-password') + '" minlength="6" placeholder="' + (reg ? 'Не меньше 6 символов' : '') + '" required></label>') +
+      '<div class="acc-err" role="alert">' + A(Cloud.msg) + '</div>' + (Cloud.ok ? '<div class="acc-ok">' + A(Cloud.ok) + '</div>' : '') +
+      '<button class="mini primary big" type="submit"' + (Cloud.busy ? ' disabled' : '') + '>' + (Cloud.busy ? 'Минутку…' : reg ? 'Создать аккаунт' : fg ? 'Прислать письмо для сброса' : 'Войти') + '</button>' +
+      (reg || fg ? '' : '<button type="button" class="acc-link" data-a="v-forgot">Забыли пароль?</button>') + (fg ? '<button type="button" class="acc-link" data-a="v-login">← Назад ко входу</button>' : '') +
+      '</form><p class="acc-note">Аккаунт хранит ваш город и все сохранения в облаке. Войдите с любого устройства — прогресс будет на месте.</p>';
+  } else if (Cloud.state === 'in'){
+    const u = Cloud.user, nLocal = readSlots().length, cs = (cloudSlots || []).filter(m => m.id !== 'auto');
+    h = '<div class="acc-me"><div class="big">' + A((u.nick || '?').charAt(0).toUpperCase()) + '</div><div><b>' + A(u.nick) + '</b><span>' + (Cloud.mode === 'claude' ? 'Вход через аккаунт Claude' : A(u.email || '')) + '</span></div></div>';
+    if (Cloud.pending){
+      const p = Cloud.pending;
+      h += '<div class="acc-box warn"><b>В аккаунте сохранён другой город</b><span>«' + A(p.city) + '» — день ' + p.day + ', ' + p.pop + ' жителей, сохранён ' + ago(p.at) + '.</span><span>Сейчас на экране «' + A(S.name) + '» — день ' + (day() + 1) + '.</span>' +
+        '<div class="acc-acts"><button class="mini primary big" data-a="take">Открыть город из аккаунта</button><button class="mini big" data-a="keep">Оставить этот</button></div><span class="acc-note">«Оставить этот» ничего не удалит: город из аккаунта переедет в сохранение «Прошлый город».</span></div>';
+    }
+    h += '<div class="acc-box"><span>' + (Cloud.saving ? 'Сохраняем в облако…' : Cloud.lastSync ? 'В облаке сохранено ' + ago(Cloud.lastSync) : 'Город сохраняется в облако каждые 2 минуты') + '</span>' +
+      '<span class="acc-note">Сохранений в аккаунте: ' + cs.length + ' + автосохранение. Они открываются в Меню → «Загрузить».</span>' + (Cloud.msg ? '<span class="acc-err">' + A(Cloud.msg) + '</span>' : '') + (Cloud.ok ? '<span class="acc-ok">' + A(Cloud.ok) + '</span>' : '') +
+      '<div class="acc-acts"><button class="mini primary" data-a="sync"' + (Cloud.saving ? ' disabled' : '') + '>☁ Сохранить сейчас</button><button class="mini" data-a="slots">Мои сохранения</button>' + (nLocal ? '<button class="mini" data-a="upload">Перенести сохранения с этого устройства (' + nLocal + ')</button>' : '') + '</div></div>' +
+      '<form class="acc-form" id="nickForm"><label>Имя мэра<input id="fNick2" maxlength="24" value="' + A(u.nick) + '"></label><button class="mini" type="submit">Сохранить имя</button></form>' +
+      (Cloud.mode === 'firebase' ? '<div class="acc-acts"><button class="mini danger" data-a="logout">Выйти из аккаунта</button></div>' : '');
+  }
+  const keep = {}; for (const k of ['fNick', 'fEmail', 'fPass']){ const el = document.getElementById(k); if (el) keep[k] = el.value; }
+  const foc = document.activeElement && document.activeElement.id;
+  body.innerHTML = h;
+  for (const k in keep){ const el = document.getElementById(k); if (el) el.value = keep[k]; }
+  if (foc && document.getElementById(foc) && body.contains(document.getElementById(foc))) document.getElementById(foc).focus();
+}
+async function accAction(a){
+  Cloud.msg = ''; Cloud.ok = '';
+  if (a === 'retry'){ cloudInit(); return; }
+  if (a === 'v-login' || a === 'v-reg' || a === 'v-forgot'){ Cloud.view = a.slice(2); accUI(); return; }
+  if (a === 'logout'){ await cloudAutoSave(true); try { await Cloud.fb.auth.signOut(); } catch(e){} toast('Вы вышли. Город остался в аккаунте и в этом браузере'); return; }
+  if (a === 'sync'){ await cloudAutoSave(true); if (!Cloud.msg) Cloud.ok = 'Сохранено в облако'; accUI(); return; }
+  if (a === 'slots'){ closeAcc(); openMenu('load'); return; }
+  if (a === 'take'){ const p = Cloud.pending; Cloud.pending = null; if (await loadCloud(p.id, 'из аккаунта')) closeAcc(); accUI(); return; }
+  if (a === 'keep'){
+    const p = Cloud.pending; Cloud.busy = true; accUI();
+    try { const raw = await cloudGet(p.id); if (raw) await cloudPut('prev', Object.assign({}, p, {name:'Прошлый город: ' + p.city}), raw); Cloud.pending = null; await cloudAutoSave(true); Cloud.ok = 'Готово: этот город сохранён в аккаунт'; }
+    catch(e){ Cloud.msg = cloudError(e); }
+    Cloud.busy = false; accUI(); renderSaves(); return;
+  }
+  if (a === 'upload'){
+    Cloud.busy = true; accUI(); let n = 0;
+    try {
+      const used = new Set((cloudSlots || []).map(m => m.id));
+      for (const m of readSlots()){
+        const raw = localStorage.getItem('samograd-slot-' + m.id); if (!raw) continue;
+        let id = m.id; if (used.has(id)){ id = SLOT_IDS.find(k => !used.has(k)); if (!id) break; }
+        await cloudPut(id, Object.assign({}, m, {id}), raw); used.add(id); n++;
+      }
+      Cloud.ok = n ? 'Перенесено в аккаунт: ' + n : 'Свободных ячеек в аккаунте не осталось';
+    } catch(e){ Cloud.msg = cloudError(e); }
+    Cloud.busy = false; accUI(); renderSaves(); return;
+  }
+}
+$('accBtn').onclick = openAcc;
+$('accClose').onclick = closeAcc;
+$('acc').addEventListener('click', e => { if (e.target === $('acc')){ closeAcc(); return; } const b = e.target.closest('[data-a]'); if (b){ e.preventDefault(); accAction(b.dataset.a); } });
+$('acc').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (e.target.id === 'nickForm'){
+    const v = $('fNick2').value.trim().slice(0, 24); if (!v) return;
+    try { await Cloud.st.set(cloudRoot(), {nick:v, created:Date.now()}); Cloud.user.nick = v; Cloud.ok = 'Имя сохранено'; if (Cloud.mode === 'firebase') Cloud.fb.auth.currentUser.updateProfile({displayName:v}).catch(() => {}); }
+    catch(err){ Cloud.msg = cloudError(err); }
+    accUI(); return;
+  }
+  if (e.target.id !== 'accForm' || Cloud.busy) return;
+  const email = $('fEmail').value.trim(), pass = $('fPass') ? $('fPass').value : '', nick = $('fNick') ? $('fNick').value.trim() : '';
+  Cloud.msg = ''; Cloud.ok = '';
+  if (Cloud.view === 'reg' && !nick){ Cloud.msg = 'Придумайте имя мэра'; accUI(); return; }
+  if (!email){ Cloud.msg = 'Введите почту'; accUI(); return; }
+  if (Cloud.view !== 'forgot' && pass.length < 6){ Cloud.msg = 'Пароль — не меньше 6 символов'; accUI(); return; }
+  Cloud.busy = true; accUI();
+  try {
+    const au = Cloud.fb.auth;
+    if (Cloud.view === 'forgot'){ await au.sendPasswordResetEmail(email); Cloud.ok = 'Письмо для сброса пароля отправлено на ' + email; Cloud.view = 'login'; }
+    else if (Cloud.view === 'reg'){ Cloud.regNick = nick; const cr = await au.createUserWithEmailAndPassword(email, pass); try { await cr.user.updateProfile({displayName:nick}); } catch(err){} }
+    else await au.signInWithEmailAndPassword(email, pass);
+  } catch(err){ Cloud.msg = cloudError(err); Cloud.regNick = ''; }
+  Cloud.busy = false; accUI();
+});
+setInterval(() => { if (cloudIn() && !document.hidden) cloudAutoSave(); }, 120000);
+document.addEventListener('visibilitychange', () => { if (document.hidden && cloudIn()) cloudAutoSave(); });
+
 /* ---------- save menu with slots ---------- */
 const SLOTS_KEY = 'samograd-slots', SLOT_IDS = ['1','2','3','4','5','6','7','8'];
 let lastAutoSave = 0, dlCap, toastT = 0, menuMode = 'save', armedSlot = null, armedDel = null, armedNew = false;
@@ -5096,7 +5379,12 @@ function makeThumb(){
   }
   return c.toDataURL('image/jpeg', .82);
 }
+const slotList = () => cloudIn() && cloudSlots ? cloudSlots : readSlots();
 async function saveSlot(id, name){
+  if (cloudIn()){
+    try { const m = await cloudPut(id, saveMeta(id, name), await pack(JSON.stringify(S))); toast('Сохранено в аккаунт: ' + m.name); renderSaves(); accUI(); return true; }
+    catch(e){ toast(cloudError(e) + '. Сохраняю в этом браузере', true); }
+  }
   try {
     const data = await pack(JSON.stringify(S));
     localStorage.setItem('samograd-slot-' + id, data);
@@ -5118,12 +5406,14 @@ function applyState(json, label){
   return true;
 }
 async function loadSlot(id){
+  if (cloudIn()) return loadCloud(id);
   const raw = (() => { try { return localStorage.getItem('samograd-slot-' + id); } catch(e){ return null; } })();
   if (!raw){ toast('Это сохранение пропало из браузера', true); return false; }
   const m = readSlots().find(x => x.id === id);
   return applyState(await unpack(raw), m ? m.name : '');
 }
-function deleteSlot(id){
+async function deleteSlot(id){
+  if (cloudIn()){ try { await cloudDel(id); toast('Сохранение удалено из аккаунта'); } catch(e){ toast(cloudError(e), true); } renderSaves(); return; }
   try { localStorage.removeItem('samograd-slot-' + id); writeSlots(readSlots().filter(x => x.id !== id)); } catch(e){}
   toast('Сохранение удалено'); renderSaves();
 }
@@ -5169,17 +5459,22 @@ function slotCard(id, m, label){
 }
 function renderSaves(){
   if ($('menu').hidden) return;
-  $('autoInfo').textContent = 'Город сам сохраняется в этом браузере каждые 15 секунд' + (lastAutoSave ? ' · последний раз ' + ago(lastAutoSave) : '') + '. Быстрое сохранение: Ctrl+S.';
+  $('autoInfo').textContent = cloudIn()
+    ? '☁ Сохранения хранятся в аккаунте «' + Cloud.user.nick + '» и открываются на любом устройстве. Автосохранение в облако — каждые 2 минуты' + (Cloud.lastSync ? ', последний раз ' + ago(Cloud.lastSync) : '') + '. Быстрое сохранение: Ctrl+S.'
+    : 'Город сам сохраняется в этом браузере каждые 15 секунд' + (lastAutoSave ? ' · последний раз ' + ago(lastAutoSave) : '') + '. Быстрое сохранение: Ctrl+S.' + (Cloud.state === 'out' ? ' Войдите в аккаунт (кнопка 👤 вверху), чтобы сохранения были доступны на любом устройстве.' : '');
   $('menuCity').textContent = S.name + ' · день ' + (day() + 1) + ' · ' + S.people.length + ' жителей';
   for (const k of ['save','load','file']) $('mt-' + k).setAttribute('aria-selected', String(menuMode === k));
   $('mp-slots').hidden = menuMode === 'file'; $('mp-file').hidden = menuMode !== 'file'; $('nameRow').hidden = menuMode !== 'save';
-  const list = readSlots(), by = Object.fromEntries(list.map(m => [m.id, m]));
+  const list = slotList(), by = Object.fromEntries(list.map(m => [m.id, m]));
   let html = '';
+  if (menuMode === 'load' && by.auto) html += slotCard('auto', by.auto, '☁ Авто');
+  if (menuMode === 'load' && by.prev) html += slotCard('prev', by.prev, 'Прошлый');
   if (menuMode === 'load' && by.quick) html += slotCard('quick', by.quick, 'Быстрое');
   html += SLOT_IDS.map(id => slotCard(id, by[id], 'Ячейка ' + id)).join('');
   $('slots').innerHTML = html;
 }
-function openMenu(mode){ menuMode = mode || menuMode; armedSlot = armedDel = null; armedNew = false; $('menuNew').textContent = 'Новый город'; $('menu').hidden = false; renderSaves(); setTimeout(() => $('menuResume').focus(), 0); }
+function openMenu(mode){ menuMode = mode || menuMode; armedSlot = armedDel = null; armedNew = false; $('menuNew').textContent = 'Новый город'; $('menu').hidden = false; renderSaves(); setTimeout(() => $('menuResume').focus(), 0);
+  if (cloudIn()) cloudList().then(l => { cloudSlots = l; renderSaves(); }).catch(() => {}); }
 function closeMenu(){ $('menu').hidden = true; }
 $('menuBtn').onclick = () => openMenu('save');
 $('menuClose').onclick = closeMenu; $('menuResume').onclick = closeMenu;
@@ -5187,13 +5482,16 @@ $('menu').addEventListener('click', e => { if (e.target === $('menu')) closeMenu
 for (const k of ['save','load','file']) $('mt-' + k).onclick = () => { menuMode = k; armedSlot = armedDel = null; renderSaves(); };
 $('menuNew').onclick = () => {
   if (!armedNew){ armedNew = true; $('menuNew').textContent = 'Точно? Текущий город заменится'; return; }
-  armedNew = false; $('menuNew').textContent = 'Новый город'; fresh(); save(); renderPanel(true); drawSpark(); closeMenu(); toast('Основан новый город ' + S.name);
+  armedNew = false; $('menuNew').textContent = 'Новый город';
+  if (cloudIn()){ const json = JSON.stringify(S), m = saveMeta('prev', 'Прошлый город: ' + S.name); pack(json).then(d => cloudPut('prev', m, d)).catch(() => {}); }
+  fresh(); save(); renderPanel(true); drawSpark(); closeMenu(); toast('Основан новый город ' + S.name + (cloudIn() ? '. Прошлый город сохранён в аккаунте' : ''));
+  if (cloudIn()) setTimeout(() => cloudAutoSave(true), 1500);
 };
 $('slots').addEventListener('click', async e => {
   const del = e.target.closest('[data-del]');
   if (del){ e.stopPropagation(); const id = del.dataset.del; if (armedDel !== id){ armedDel = id; renderSaves(); return; } armedDel = null; deleteSlot(id); return; }
   const card = e.target.closest('[data-slot]'); if (!card) return;
-  const id = card.dataset.slot, m = readSlots().find(x => x.id === id);
+  const id = card.dataset.slot, m = slotList().find(x => x.id === id);
   if (menuMode === 'save'){
     if (m && armedSlot !== id){ armedSlot = id; renderSaves(); return; }
     armedSlot = null; await saveSlot(id, $('saveName').value.trim() || null); $('saveName').value = '';
@@ -5205,15 +5503,15 @@ $('copyCode').onclick = copyCode;
 $('openFile').onclick = () => $('fileIn').click();
 $('fileIn').onchange = async () => {
   const f = $('fileIn').files[0]; $('fileIn').value = ''; if (!f) return;
-  try { if (applyState(await unpack(await f.text()), f.name)) closeMenu(); } catch(e){ toast('Не получилось прочитать файл', true); }
+  try { const txt = await unpack(await f.text()); await stashPrev(); if (applyState(txt, f.name)) closeMenu(); } catch(e){ toast('Не получилось прочитать файл', true); }
 };
 $('loadCode').onclick = async () => {
   const v = $('codeBox').value; if (!v.trim()){ toast('Вставьте код сохранения в поле', true); return; }
-  try { if (applyState(await unpack(v), 'из кода')) closeMenu(); } catch(e){ toast('Код не подошёл. Проверьте, что он скопирован целиком', true); }
+  try { const txt = await unpack(v); await stashPrev(); if (applyState(txt, 'из кода')) closeMenu(); } catch(e){ toast('Код не подошёл. Проверьте, что он скопирован целиком', true); }
 };
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 's' || e.code === 'KeyS')){ e.preventDefault(); saveSlot('quick', 'Быстрое сохранение'); }
-  if (e.key === 'Escape'){ if ($('menu').hidden) openMenu('save'); else closeMenu(); }
+  if (e.key === 'Escape'){ if (!$('acc').hidden){ closeAcc(); return; } if ($('menu').hidden) openMenu('save'); else closeMenu(); }
 });
 setInterval(renderSaves, 5000);
 /* ---------- loop ---------- */
@@ -5246,7 +5544,7 @@ function start(data){
   let ok = false;
   try { if (data && data.s){ load(data.s); ok = true; if (data.cam) cam = data.cam; } } catch(e){}
   if (!ok) try { const s = localStorage.getItem(SAVE_KEY); if (s){ load(s); ok = true; cam = {x:S.cx + .5, y:S.cy + .5, z:fitZoom()}; } } catch(e){}
-  if (!ok){ speed = 'real'; REAL = true; fresh(); }
+  if (!ok){ speed = 'real'; REAL = true; fresh(); startedFresh = true; }
   setSpeed(S.mode === undefined ? 'real' : S.mode);
   renderPanel(true); drawSpark();
   setInterval(save, 15000);
@@ -5255,8 +5553,9 @@ function start(data){
   new ResizeObserver(() => { resize(); drawSpark(); }).observe(mapEl);
   window.claude?.hot?.snapshot?.(() => ({s:JSON.stringify(S), cam}));
   requestAnimationFrame(t => { lastFrame = t; frame(t); });
+  accUI(); cloudInit();
 }
-window.samograd = {updateTraffic, isStop, drive:driveOf, sprite:b => sprite(b), lim:() => limD, curves:() => { bigCurves(); return bcList; }, traffic:() => traffic, boats:() => boats, look:(x, y, z) => { cam.x = x; cam.y = y; if (z) cam.z = z; }};
+window.samograd = {cloud:() => ({state:Cloud.state, mode:Cloud.mode, user:Cloud.user, pending:Cloud.pending, msg:Cloud.msg, slots:cloudSlots, lastSync:Cloud.lastSync}), updateTraffic, isStop, drive:driveOf, sprite:b => sprite(b), lim:() => limD, curves:() => { bigCurves(); return bcList; }, traffic:() => traffic, boats:() => boats, look:(x, y, z) => { cam.x = x; cam.y = y; if (z) cam.z = z; }};
 window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 })();
 </script>
