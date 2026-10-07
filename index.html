@@ -4185,16 +4185,37 @@ function roads(){
 function roadPath(a, b){ if (a < 0 || b < 0 || a === b) return null; const p = bfs(a, b, true) || bfs(a, b); return p && p.length >= 4 ? p : null; }
 function anyPath(a, b){ if (a < 0 || b < 0) return null; if (a === b) return [a, a]; return bfs(a, b, true) || bfs(a, b); }
 const curTile = v => v.path[Math.min(v.pi, v.path.length - 1)];
-function isStop(i){
-  const x = i % W, y = (i / W) | 0;
+/* bus stops: one stop (both directions) per stretch of street, at least 7 tiles from the next one, never next to a crossing */
+function stopCand(i){
   if (!S.road[i] || S.terrain[i] === 1 || (S.rl && S.rl[i])) return false;
-  const av = avOf(i), key = av ? Math.min(i, partner(i)) : i;
-  if (hash(key * 7 + 3) > .13) return false;
-  if (av && (medianOpen(i) || medianOpen(partner(i)))) return false;
-  if (curvesAt(i)) return false;
+  const av = avOf(i);
+  if (av && ((av !== 1 && av !== 3) || medianOpen(i) || medianOpen(partner(i)))) return false;
+  if (curvesAt(i) || isJ(i)) return false;
   const L = rc(i, -1, 0), Rr = rc(i, 1, 0), U = rc(i, 0, -1), D = rc(i, 0, 1);
-  return (L && Rr && !U && !D) || (U && D && !L && !Rr);
+  const hor = L && Rr && !U && !D, ver = U && D && !L && !Rr;
+  if (!hor && !ver) return false;
+  for (const k of hor ? [i - 1, i + 1] : [i - W, i + W]) if (isJ(k) || curvesAt(k)) return false;
+  return true;
 }
+let stopKey = -1, stopS = null, stopSet = new Set();
+function stopTiles(){
+  const key = roadsVer * 4096 + (S.avN || 0) * 64 + (S.works ? S.works.length : 0);
+  if (stopS === S && stopKey === key) return stopSet;
+  const prev = stopS === S ? stopSet : new Set();
+  stopKey = key; stopS = S; stopSet = new Set();
+  const cand = [];
+  for (let i = 0; i < W * H; i++) if (S.road[i] && stopCand(i)) cand.push(i);
+  cand.sort((a, b) => (prev.has(a) ? -1 : hash(a * 7 + 3)) - (prev.has(b) ? -1 : hash(b * 7 + 3)));
+  const near = new Uint8Array(W * H), R2 = 6;
+  for (const i of cand){
+    if (near[i]) continue;
+    stopSet.add(i); if (avOf(i)) stopSet.add(partner(i));
+    const x = i % W, y = (i / W) | 0;
+    for (let yy = Math.max(0, y - R2); yy <= Math.min(H - 1, y + R2); yy++) for (let xx = Math.max(0, x - R2); xx <= Math.min(W - 1, x + R2); xx++) near[idx(xx, yy)] = 1;
+  }
+  return stopSet;
+}
+function isStop(i){ return S.road[i] ? stopTiles().has(i) : false; }
 function busOnTile(v){ const k = v.path[v.pi]; if (v.pi > 0 && v.pi < v.path.length - 1 && isStop(k)){ v.prog = 0; v.wait = REAL ? .35 + R() * .3 : 6 + R() * 4; return true; } return false; }
 function spawnTruck(){
   const biz = S.buildings.filter(b => b.type === 'shop' || b.type === 'cafe' || b.type === 'office' || b.type === 'hospital');
