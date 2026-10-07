@@ -7,13 +7,17 @@
 <script>
 /* ═══ АККАУНТЫ ИГРОКОВ ═══
    В claude.ai аккаунт игрока — это его аккаунт Claude, настраивать ничего не нужно.
-   На своём сайте (GitHub Pages и т. п.) аккаунты работают через Firebase:
-   замените null на настройки вашего проекта Firebase (пошагово — в README.md), например:
-   window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || {
-     apiKey: "AIza...", authDomain: "samograd-12345.firebaseapp.com",
-     projectId: "samograd-12345", appId: "1:123:web:abc"
-   }; */
-window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || null;
+   На своём сайте (GitHub Pages и т. п.) аккаунты работают через Firebase — ниже настройки
+   проекта samograd-4b6ad. Эти ключи публичные по замыслу Firebase: защищают данные
+   правила Firestore (firestore.rules), а не секретность ключа. Свой проект — см. README.md. */
+window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || {
+  apiKey: "AIzaSyBo1KOgubXvwspDIt-JFqMacycrp6GeHRA",
+  authDomain: "samograd-4b6ad.firebaseapp.com",
+  projectId: "samograd-4b6ad",
+  storageBucket: "samograd-4b6ad.firebasestorage.app",
+  messagingSenderId: "456502093008",
+  appId: "1:456502093008:web:fe1c7f9ff47bb2ef51ead5"
+};
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

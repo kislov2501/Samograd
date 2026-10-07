@@ -16,42 +16,32 @@
 - Без входа игра работает как раньше: всё хранится в этом браузере.
 
 В claude.ai аккаунт игрока — это его аккаунт Claude: ничего настраивать не нужно.
-На своём сайте (GitHub Pages) аккаунты работают через **Firebase** — бесплатный облачный сервис Google. Его нужно один раз подключить, это около 10 минут.
+На сайте **https://kislov2501.github.io/Samograd/** аккаунты работают через **Firebase** (бесплатный облачный сервис Google) — **уже подключено**:
 
-## 1. Включить сайт игры (GitHub Pages)
+- проект Firebase `samograd-4b6ad`, база Firestore в регионе `eur3` (Европа);
+- вход по почте и паролю включён, домен `kislov2501.github.io` разрешён;
+- правила доступа — из файла [`firestore.rules`](firestore.rules): каждый игрок видит и меняет только свои сохранения;
+- настройки проекта вписаны в начало `index.html` (`window.SAMOGRAD_FIREBASE`). Эти ключи не секретные: они только говорят игре, к какому проекту подключаться, а данные защищают правила.
 
-1. В репозитории откройте **Settings → Pages**.
-2. В **Build and deployment → Source** выберите **Deploy from a branch**, ветка **main**, папка **/ (root)** → **Save**.
-3. Через минуту игра откроется по адресу **https://kislov2501.github.io/Samograd/**
+Управлять игроками (посмотреть список, удалить аккаунт, сбросить пароль) можно в консоли Firebase:
+**https://console.firebase.google.com/project/samograd-4b6ad/authentication/users**
 
-## 2. Подключить аккаунты (Firebase)
+<details>
+<summary>Как подключить свой проект Firebase с нуля (если понадобится)</summary>
 
-1. Зайдите на **https://console.firebase.google.com** под своим Google-аккаунтом → **Create a project** (Создать проект) → название `Samograd` → Google Analytics можно выключить → **Create project**.
-2. Слева **Build → Authentication → Get started** → вкладка **Sign-in method** → **Email/Password** → включите первый переключатель **Enable** → **Save**.
-3. Там же вкладка **Settings → Authorized domains → Add domain** → впишите `kislov2501.github.io` → **Add**.
-4. Слева **Build → Firestore Database → Create database** → регион, например, `eur3 (europe-west)` → **Start in production mode** → **Create**.
-5. В Firestore откройте вкладку **Rules**, сотрите всё и вставьте содержимое файла [`firestore.rules`](firestore.rules) из этого репозитория → **Publish**. Так каждый игрок видит только свои сохранения.
-6. Шестерёнка слева вверху → **Project settings** → внизу **Your apps** → значок **`</>`** (Web) → название `Samograd` → **Register app**. Появится блок `const firebaseConfig = { ... }`.
-7. Откройте `index.html` (на GitHub — значок карандаша), найдите в самом начале строку
+1. **https://console.firebase.google.com** → **Create a project** → название → Google Analytics можно выключить → **Create project**.
+2. **Build → Authentication → Get started** → **Sign-in method** → **Email/Password** → **Enable** → **Save**.
+3. **Authentication → Settings → Authorized domains → Add domain** → адрес вашего сайта (например, `kislov2501.github.io`).
+4. **Build → Firestore Database → Create database** → Standard edition → регион (например, `eur3`) → **Start in production mode** → **Create**.
+5. Вкладка **Rules** → вставьте содержимое [`firestore.rules`](firestore.rules) → **Publish**.
+6. **Project settings → Your apps → `</>`** (Web) → **Register app** → скопируйте блок `firebaseConfig`.
+7. В начале `index.html` замените объект в `window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || { … };` на свой.
 
-   ```js
-   window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || null;
-   ```
+</details>
 
-   и замените `null` на ваш блок настроек, например:
+## Сайт игры (GitHub Pages)
 
-   ```js
-   window.SAMOGRAD_FIREBASE = window.SAMOGRAD_FIREBASE || {
-     apiKey: "AIza…",
-     authDomain: "samograd-12345.firebaseapp.com",
-     projectId: "samograd-12345",
-     appId: "1:1234567890:web:abc123"
-   };
-   ```
-
-   Сохраните (**Commit changes**). Эти ключи не секретные: они только говорят игре, к какому проекту подключаться, а доступ защищают правила из шага 5.
-
-Готово: на сайте появятся регистрация и вход.
+Сайт публикуется из ветки **main**, папка **/ (root)** (Settings → Pages). После каждого изменения `index.html` новая версия появляется по адресу выше примерно через минуту.
 
 ## Сколько игроков выдержит бесплатный тариф
 
@@ -62,7 +52,7 @@
 
 ## Если что-то не работает
 
-- **«Этот сайт не добавлен в Firebase…»** — повторите шаг 2.3 (Authorized domains).
-- **«Вход по почте выключен…»** — шаг 2.2.
-- **«Облако не пустило…»** — проверьте правила, шаг 2.5.
-- **Кнопка 👤 пишет «Аккаунт» и говорит, что аккаунты не подключены** — настройки из шага 2.7 не вставлены или вставлены с ошибкой.
+- **«Этот сайт не добавлен в Firebase…»** — игра открыта не с `kislov2501.github.io`: добавьте этот адрес в Authentication → Settings → Authorized domains.
+- **«Вход по почте выключен…»** — Authentication → Sign-in method → Email/Password должен быть включён.
+- **«Облако не пустило…»** — проверьте, что в Firestore → Rules опубликованы правила из `firestore.rules`.
+- **Кнопка 👤 говорит, что аккаунты не подключены** — в начале `index.html` пропали настройки `window.SAMOGRAD_FIREBASE`.
