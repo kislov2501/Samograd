@@ -1376,6 +1376,7 @@ function avCorners(){
 }
 function hasLight(i){
   if (!S.road[i] || S.terrain[i] === 1 || !isJ(i) || (S.rb && S.rb[i])) return false;
+  if (S.rb && (S.rb[i - 1] || S.rb[i + 1] || S.rb[i - W] || S.rb[i + W])) return false;
   avCorners(); if (acSet.has(i)) return false;
   return !!signalMap().get(jcArr[i]);
 }
@@ -2045,7 +2046,15 @@ function rc(i, dx, dy){
   if (S.av && S.av[i] && j === partner(i)) return medianOpen(i);
   return true;
 }
+/* big roundabout: its four centre tiles are one-way, counter-clockwise (TL -> BL -> BR -> TR) */
+function ringRole(i){
+  const r = S.rb; if (!r || !(r[i] > 1)) return -1;
+  const t = r[i] === 2 ? i : r[i - 1] === 2 ? i - 1 : r[i - W] === 2 ? i - W : r[i - W - 1] === 2 ? i - W - 1 : -1;
+  if (t < 0 || !S.road[t] || !S.road[t + 1] || !S.road[t + W] || !S.road[t + W + 1]) return -1;
+  return i === t ? 0 : i === t + W ? 1 : i === t + W + 1 ? 2 : 3;
+}
 function vehOk(c, n, dx, dy){
+  if (S.rb){ const rc0 = ringRole(c); if (rc0 >= 0){ const rn = ringRole(n); if (rn >= 0 && rn !== (rc0 + 1) % 4) return false; } }
   const dc = travelDir(c), dn = travelDir(n);
   if (dc && (avAxis(c) === 'h') === (dy === 0) && (dc[0] !== dx || dc[1] !== dy)) return false;
   if (dn && (avAxis(n) === 'h') === (dy === 0) && (dn[0] !== dx || dn[1] !== dy)) return false;
@@ -2525,7 +2534,10 @@ function mergeParallel(){
       let k = a; while (k >= 0 && plain(k) && plain(hz ? k + W : k + 1) && (!hz || ((k / W) | 0) === y)) { run.unshift(k); k -= st; }
       k = a + st; while (k < W * H && plain(k) && plain(hz ? k + W : k + 1) && (!hz || ((k / W) | 0) === y)) { run.push(k); k += st; }
       for (const t of run) seen[t] = 1;
-      if (run.length < 2) continue;
+      if (run.length < 2){
+        const t = run[0], u = hz ? t + W : t + 1, cn = q => hz ? (S.road[q - 1] || S.road[q + 1]) : (S.road[q - W] || S.road[q + W]);
+        if (!(cn(t) && cn(u))) continue;
+      }
       for (const t of run){ if (hz){ S.av[t] = 3; S.av[t + W] = 4; } else { S.av[t] = 1; S.av[t + 1] = 2; } }
       n++;
     }
@@ -2533,7 +2545,17 @@ function mergeParallel(){
   if (n){ roadsVer++; S.avN = (S.avN || 0) + 1; }
   return n;
 }
+function repairRings(){
+  if (!S.rb || !S.rbList) return;
+  let n = 0;
+  for (const c of S.rbList){
+    if (S.rb[c] !== 2) continue;
+    for (const t of [c, c + 1, c + W, c + W + 1]) if (!S.road[t] && S.terrain[t] !== 1 && S.bld[t] < 0){ S.road[t] = 1; n++; }
+  }
+  if (n) roadsVer++;
+}
 function tidyRoads(limit, quiet){
+  repairRings();
   let nAv = 0, nStub = 0; const names = [];
   const busy = new Set(); for (const w of S.works || []) for (const [i] of w.av) busy.add(i);
   for (let pass = 0; pass < limit; pass++){
@@ -5524,6 +5546,7 @@ function stopCand(i){
   const av = avOf(i);
   if (av && ((av !== 1 && av !== 3) || medianOpen(i) || medianOpen(partner(i)))) return false;
   if (curvesAt(i) || isJ(i)) return false;
+  if (S.rb){ const x0 = i % W, y0 = (i / W) | 0; for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++){ if (inb(x0 + dx, y0 + dy) && S.rb[idx(x0 + dx, y0 + dy)]) return false; } }
   const L = rc(i, -1, 0), Rr = rc(i, 1, 0), U = rc(i, 0, -1), D = rc(i, 0, 1);
   const hor = L && Rr && !U && !D, ver = U && D && !L && !Rr;
   if (!hor && !ver) return false;
@@ -5616,15 +5639,36 @@ function buildCarGrid(){
     for (const v of traffic) acc(v);
     for (const p of S.people) if (p.st === 'walk' && p.car) acc(p);
   }
-  CAR_GRID = new Map(); CAR_ST = S.t;
+  CAR_GRID = new Map(); CAR_ST = S.t; RING_CNT = new Map();
+  if (S.rbList && S.rbList.length){
+    const cnt = o => { if (o._x != null && ringBand(o._x, o._y) === 1) RING_CNT.set(RB_ID, (RING_CNT.get(RB_ID) || 0) + 1); };
+    for (const v of traffic) cnt(v);
+    for (const p of S.people) if (p.st === 'walk' && p.car && p._v) cnt(p);
+  }
   const add = (o, x, y, a, L) => { if (x == null || a == null) return; const k = ((x * .5) | 0) * 1000 + ((y * .5) | 0); let l = CAR_GRID.get(k); if (!l) CAR_GRID.set(k, l = []); l.push({o, x, y, a, L}); };
   for (const v of traffic) add(v, v._x, v._y, v._a, v.kind === 'bus' ? .82 : v.kind === 'truck' || v.kind === 'firetruck' || v.kind === 'tanker' ? .6 : .42);
   for (const p of S.people) if (p.st === 'walk' && p.car && p._v) add(p, p._x, p._y, p._a, .42);
+}
+let RB_OX = 0, RB_OY = 0, RB_ID = -1, RING_CNT = new Map();
+function ringBand(x, y){
+  const L = S.rbList; if (!L || !L.length) return 0;
+  for (const c of L){
+    const big = S.rb[c] === 2, ox = c % W + (big ? 1 : .5), oy = ((c / W) | 0) + (big ? 1 : .5);
+    if (Math.abs(x - ox) > 2.8 || Math.abs(y - oy) > 2.8) continue;
+    const d = Math.hypot(x - ox, y - oy); RB_OX = ox; RB_OY = oy; RB_ID = c;
+    if (big){ if (d >= 1.25 && d <= 1.9) return 1; if (d > 1.9 && d < 2.8) return 2; }
+    else { if (d >= .8 && d <= 1.25) return 1; if (d > 1.25 && d < 1.9) return 2; }
+    return 0;
+  }
+  return 0;
 }
 function carBlocked(o){
   if (o.siren || o._x == null || o._a == null || Math.abs(S.t - CAR_ST) > 3) return false;
   const now = performance.now(), ca = Math.cos(o._a), sa = Math.sin(o._a), myL = o.kind === 'bus' ? .82 : o.kind === 'truck' || o.kind === 'firetruck' || o.kind === 'tanker' ? .6 : .42;
   const gx = (o._x * .5) | 0, gy = (o._y * .5) | 0; let hit = false;
+  if (S.rbList && S.rbList.length && ringBand(o._x, o._y) === 2 && Math.cos(o._a) * (RB_OX - o._x) + Math.sin(o._a) * (RB_OY - o._y) > 0){
+    const cap = S.rb[RB_ID] === 2 ? 5 : 2; if ((RING_CNT.get(RB_ID) || 0) >= cap) hit = true;
+  }
   for (let dx = -1; dx <= 1 && !hit; dx++) for (let dy = -1; dy <= 1 && !hit; dy++){
     const l = CAR_GRID.get((gx + dx) * 1000 + gy + dy); if (!l) continue;
     for (const q of l){
@@ -5635,6 +5679,7 @@ function carBlocked(o){
       if (Math.abs(ahead) <= .02 && Math.abs(lat) < .15){ if (!o._cid) o._cid = ++CAR_ID; if (!q.o._cid) q.o._cid = ++CAR_ID; if (o._cid > q.o._cid){ hit = true; break; } continue; }
       if (ahead <= .02 || ahead > (myL + q.L) / 2 + .12) continue;
       if (Math.abs(lat) > (da > 1.1 ? .26 : .15)) continue;
+      if (S.rbList && S.rbList.length && ringBand(o._x, o._y) === 1 && ringBand(q.x, q.y) === 2 && Math.cos(q.a) * (RB_OX - q.x) + Math.sin(q.a) * (RB_OY - q.y) > 0) continue;
       hit = true; break;
     }
   }
@@ -7001,7 +7046,7 @@ function start(data){
   requestAnimationFrame(t => { lastFrame = t; frame(t); });
   accUI(); cloudInit();
 }
-window.samograd = {cloud:() => ({state:Cloud.state, mode:Cloud.mode, user:Cloud.user, pending:Cloud.pending, msg:Cloud.msg, slots:cloudSlots, lastSync:Cloud.lastSync}), updateTraffic, isStop, drive:driveOf, sprite:b => sprite(b), lim:() => limD, curves:() => { bigCurves(); return bcList; }, traffic:() => traffic, boats:() => boats, select, pick:(x, y) => pickAt(x, y), look:(x, y, z) => { cam.x = x; cam.y = y; if (z) cam.z = z; }};
+window.samograd = {hl:hasLight, isJ, cloud:() => ({state:Cloud.state, mode:Cloud.mode, user:Cloud.user, pending:Cloud.pending, msg:Cloud.msg, slots:cloudSlots, lastSync:Cloud.lastSync}), updateTraffic, isStop, drive:driveOf, sprite:b => sprite(b), lim:() => limD, curves:() => { bigCurves(); return bcList; }, traffic:() => traffic, boats:() => boats, select, pick:(x, y) => pickAt(x, y), look:(x, y, z) => { cam.x = x; cam.y = y; if (z) cam.z = z; }};
 window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 })();
 </script>
