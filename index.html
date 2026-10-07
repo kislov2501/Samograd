@@ -5054,6 +5054,48 @@ function drawBuilding(b, now){
     }
   }
 }
+/* static layer: roads without animation + trees, baked once per change (used when zoomed out) */
+const LOT_DYN = new Set(['rbring', 'square', 'yard', 'park', 'beach', 'port', 'site', 'void', 'bigpark', 'amuse', 'airport', 'landfill', 'cemetery']);
+function lotStatic(i){
+  if (S.road[i] || S.terrain[i] === 1) return false;
+  const bi = S.bld[i]; if (bi < 0) return false; const b = S.buildings[bi];
+  return !LOT_DYN.has(b.type) && fwOf(b) === 1 && fhOf(b) === 1;
+}
+let bakedLot = new Uint8Array(W * H), staticCv = null, staticKey = '', staticT = -9999, staticChk = -9999, staticCs = '', bakedRoad = new Uint8Array(W * H), bakedTree = new Uint8Array(W * H);
+function staticSig(){
+  let a = 0, b = 0, c = 0; const R = S.road, A = S.av, B = S.rb, L = S.rl;
+  for (let i = 0; i < R.length; i++){ if (R[i]){ a += 1 + (i % 7); if (A && A[i]) b += A[i] * (1 + (i % 5)); if (B && B[i]) c += B[i]; if (L && L[i]) c += 3; } }
+  let bs = 0; for (const b of S.buildings) bs += b.x * 3 + b.y * 5 + b.type.charCodeAt(0) + b.type.length * 7 + (b.lvl || 0) * 11 + (b.gen || 0) * 13;
+  return roadsVer + ':' + bs + ':' + S.buildings.length + ':' + a + ':' + b + ':' + c + ':' + (S.avN || 0) + ':' + (S.works ? S.works.length : 0) + ':' + (depV ? 1 : 0);
+}
+function bakeStatic(now){
+  const G = groundR, gk = groundKey + ':' + S.seed + S.name;
+  if (staticCv && staticKey === gk && now - staticChk < 300) return;
+  staticChk = now;
+  const sig = staticSig() + '|' + gk;
+  if (staticCv && staticCs === sig) return;
+  if (staticCv && staticKey === gk && now - staticT < 700) return;
+  staticT = now; staticCs = sig;
+  const T = 24, w = Math.ceil((G.x1 - G.x0) * T), h = Math.ceil((G.y1 - G.y0) * T);
+  if (!staticCv) staticCv = document.createElement('canvas');
+  if (staticCv.width !== w || staticCv.height !== h){ staticCv.width = w; staticCv.height = h; } 
+  staticKey = gk;
+  const g = staticCv.getContext('2d'); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, w, h);
+  g.setTransform(T, 0, 0, T, -G.x0 * T, -G.y0 * T);
+  bakedRoad.fill(0); bakedTree.fill(0); bakedLot.fill(0);
+  const saved = ctx; ctx = g;
+  try {
+    for (let y = Math.floor(G.y0); y < G.y1; y++) for (let x = Math.floor(G.x0); x < G.x1; x++){
+      const i = idx(x, y);
+      if (S.road[i] && !hasLight(i) && !isStop(i)){ drawGround(x, y, i, 0); bakedRoad[i] = 1; }
+      else if (lotStatic(i)){ drawGround(x, y, i, 0); bakedLot[i] = 1; }
+    }
+    for (let y = Math.floor(G.y0); y < G.y1; y++) for (let x = Math.floor(G.x0); x < G.x1; x++){
+      const i = idx(x, y);
+      if (S.terrain[i] === 2 && !S.road[i] && S.bld[i] < 0){ drawTree(x, y, i); bakedTree[i] = 1; }
+    }
+  } finally { ctx = saved; }
+}
 let groundCv = null, groundKey = null, parkedBy = new Map(), groundR = {x0:0, y0:0, x1:W, y1:H};
 function groundRect(){ const L = S.lim || {x0:0, y0:0, x1:W, y1:H}; return {x0:Math.max(0, L.x0 - 3), y0:Math.max(0, L.y0 - 3), x1:Math.min(W, L.x1 + 3), y1:Math.min(H, L.y1 + 3)}; }
 const groundKeyNow = () => { const G = groundRect(); return S.seed + S.name + ':' + G.x0 + ',' + G.y0 + ',' + G.x1 + ',' + G.y1; };
@@ -5489,8 +5531,11 @@ function stopCand(i){
   return true;
 }
 let stopKey = -1, stopS = null, stopSet = new Set();
+let depS = null, depN = -1, depV = false, depT = 0;
 function stopTiles(){
-  const hasDep = S.buildings.some(b => b.type === 'depot');
+  const nowT = performance.now();
+  if (depS !== S || depN !== S.buildings.length || nowT - depT > 1500){ depS = S; depN = S.buildings.length; depT = nowT; depV = S.buildings.some(b => b.type === 'depot'); }
+  const hasDep = depV;
   const key = (roadsVer * 4096 + (S.avN || 0) * 64 + (S.works ? S.works.length : 0)) * 2 + (hasDep ? 1 : 0);
   if (stopS === S && stopKey === key) return stopSet;
   if (!hasDep){ stopKey = key; stopS = S; stopSet = new Set(); return stopSet; }
@@ -5880,7 +5925,13 @@ function draw(now){
   ctx.imageSmoothingEnabled = true; ctx.drawImage(groundCv, groundR.x0, groundR.y0, groundR.x1 - groundR.x0, groundR.y1 - groundR.y0);
   curPR = Math.max(.1, 2.4 / z);
   for (const b of S.buildings) if ((b.type === 'bigpark' || b.type === 'amuse') && (b.y < vy0 - 3 || b.x < vx0 - 6) && b.x + fwOf(b) >= vx0 && b.y + fhOf(b) >= vy0 && b.x <= vx1 && b.y <= vy1) (b.type === "amuse" ? drawAmuseGround : drawBigPark)(b, now);
-  for (let y = Math.max(0, vy0 - 3); y <= vy1; y++) for (let x = Math.max(0, vx0 - 6); x <= vx1; x++) drawGround(x, y, idx(x, y), now);
+  const baking = z <= 26 && !!groundCv;
+  if (baking){ bakeStatic(now); if (staticCv) ctx.drawImage(staticCv, groundR.x0, groundR.y0, groundR.x1 - groundR.x0, groundR.y1 - groundR.y0); }
+  for (let y = Math.max(0, vy0 - 3); y <= vy1; y++) for (let x = Math.max(0, vx0 - 6); x <= vx1; x++){
+    const i = idx(x, y);
+    if (baking && ((bakedRoad[i] && S.road[i] && !hasLight(i) && !isStop(i)) || (bakedLot[i] && lotStatic(i)))) continue;
+    drawGround(x, y, i, now);
+  }
   drawAvenues(vx0, vy0, vx1, vy1);
   drawAvBends(vx0, vy0, vx1, vy1);
   drawRoundabouts(vx0, vy0, vx1, vy1, now);
@@ -5918,7 +5969,7 @@ function draw(now){
   for (let y = vy0 - 1; y <= vy1 + 4; y++){
     if (y >= 0 && y < H) for (let x = Math.max(0, vx0 - 5); x <= vx1; x++){
       const i = idx(x, y);
-      if (S.terrain[i] === 2 && !S.road[i] && S.bld[i] < 0) drawTree(x, y, i);
+      if (S.terrain[i] === 2 && !S.road[i] && S.bld[i] < 0 && !(baking && bakedTree[i])) drawTree(x, y, i);
       const b = S.bld[i]; if (b >= 0){
         const bb = S.buildings[b], T = TYPES[bb.type];
         if (fwOf(bb) > 1 || fhOf(bb) > 1){ if (bb.type === 'bigpark' || bb.type === 'cemetery' || drawnMulti.has(b) || y !== Math.min(bb.y + fhOf(bb) - 1, vy1 + 4)) continue; drawnMulti.add(b); }
