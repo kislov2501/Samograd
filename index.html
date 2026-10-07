@@ -812,11 +812,11 @@ function pedPop(){
   return v0;
 }
 /* маршрут пешехода по тротуарам: возвращает плоский массив точек [x,y,...] или null */
-function pedRoute(fromB, toB, p){
-  const A = S.buildings[fromB], B = S.buildings[toB], ea = entry(A), eb = entry(B);
+function pedRoute(fromB, toB, p, from){
+  const A = S.buildings[fromB], B = S.buildings[toB], ea = from ? idx(Math.floor(from.x), Math.floor(from.y)) : entry(A), eb = entry(B);
   if (ea < 0 || eb < 0) return null;
   const ex = ea % W, ey = (ea / W) | 0, tx = eb % W, ty = (eb / W) | 0;
-  const ax = A.x + (fwOf(A) >> 1) + .5, ay = A.y + (fhOf(A) >> 1) + .5, bx = B.x + (fwOf(B) >> 1) + .5, by = B.y + (fhOf(B) >> 1) + .5;
+  const ax = from ? from.x : A.x + (fwOf(A) >> 1) + .5, ay = from ? from.y : A.y + (fhOf(A) >> 1) + .5, bx = B.x + (fwOf(B) >> 1) + .5, by = B.y + (fhOf(B) >> 1) + .5;
   /* от здания до тротуара идём только по земле: отрезок не должен резать проезжую часть */
   const clear = (qx, qy, vx, vy) => {
     for (let t = .1; t < .96; t += .1){
@@ -844,7 +844,9 @@ function pedRoute(fromB, toB, p){
       else if (k === 2){ ny++; ex2 = vx; ey2 = vy; h = 0; } else { ny--; ex2 = vx; ey2 = ny; h = 0; }
       if (nx < 0 || ny < 0 || nx > W || ny > H) continue;
       const c = pedEdge(ex2, ey2, h); if (!c) continue;
-      const nv = ny * PW + nx, ng = g + (c > 2 ? 1.6 : 1);
+      /* идём по правой стороне хода: дорога слева; с другой стороны путь чуть дороже */
+      const sgn = c & 1 ? -1 : 1, dir = h ? nx - vx : ny - vy, left = h ? sgn === -dir : sgn === dir;
+      const nv = ny * PW + nx, ng = g + (c > 2 ? 1.6 : left ? 1 : 1.2);
       if (pedSt[nv] === pedN && pedG[nv] <= ng) continue;
       pedSt[nv] = pedN; pedG[nv] = ng; pedP[nv] = v; pedPush(ng + hh(nx, ny), nv);
     }
@@ -852,17 +854,47 @@ function pedRoute(fromB, toB, p){
   }
   if (goal < 0) return null;
   const vs = []; for (let v = goal; v !== -1; v = pedP[v]) vs.push(v); vs.reverse();
-  const ins = .07 + hash(p.id * 29 + 3) * .06, pts = [ax, ay];
-  const add = (x, y) => { const n = pts.length; if (Math.abs(pts[n - 2] - x) > 1e-4 || Math.abs(pts[n - 1] - y) > 1e-4) pts.push(x, y); };
+  const ins = .07 + hash(p.id * 29 + 3) * .06, P = [[ax, ay, 1]];
+  const add = (x, y, hd) => { const q = P[P.length - 1]; if (Math.abs(q[0] - x) > 1e-4 || Math.abs(q[1] - y) > 1e-4) P.push([x, y, hd]); else if (hd) q[2] = 1; };
   for (let k = 0; k + 1 < vs.length; k++){
     const u = vs[k], w = vs[k + 1], ux = u % PW, uy = (u / PW) | 0, wx = w % PW, wy = (w / PW) | 0, h = uy === wy ? 1 : 0;
-    const c = pedEdge(h ? Math.min(ux, wx) : ux, h ? uy : Math.min(uy, wy), h), sg = (c & 1 ? -1 : 1) * ins;
-    add(ux + (h ? 0 : sg), uy + (h ? sg : 0)); add(wx + (h ? 0 : sg), wy + (h ? sg : 0));
+    const c = pedEdge(h ? Math.min(ux, wx) : ux, h ? uy : Math.min(uy, wy), h), sg = (c & 1 ? -1 : 1) * ins, hd = c > 2 ? 1 : 0;
+    add(ux + (h ? 0 : sg), uy + (h ? sg : 0), hd); add(wx + (h ? 0 : sg), wy + (h ? sg : 0), hd);
   }
-  add(bx, by);
-  return pts;
+  add(bx, by, 1);
+  /* прямые участки без лишних точек, углы между переходами сглаживаем (Чайкин, 2 прохода); переходы и вход в здание остаются жёсткими */
+  const Q = [P[0]];
+  for (let k = 1; k < P.length - 1; k++){
+    const a = Q[Q.length - 1], b = P[k], c = P[k + 1];
+    if (!b[2] && Math.abs((b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])) < 1e-6) continue;
+    Q.push(b);
+  }
+  Q.push(P[P.length - 1]);
+  const out = [Q[0][0], Q[0][1]];
+  let st = 0;
+  for (let k = 1; k < Q.length; k++){
+    if (!Q[k][2] && k < Q.length - 1) continue;
+    let seg = Q.slice(st, k + 1).map(q => [q[0], q[1]]);
+    for (let it = 0; it < 2 && seg.length > 2; it++){
+      const o = [seg[0]];
+      for (let m = 0; m + 1 < seg.length; m++){
+        const a = seg[m], b = seg[m + 1];
+        if (m > 0) o.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25]);
+        if (m + 2 < seg.length) o.push([a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]);
+      }
+      o.push(seg[seg.length - 1]); seg = o;
+    }
+    for (let m = 1; m < seg.length; m++) out.push(seg[m][0], seg[m][1]);
+    st = k;
+  }
+  return out;
 }
-const WALK = new Map();
+const WALK = new Map(), w0 = e => e.w.length / 2 - 1;
+function wpos(e, p){
+  const w = e.w, a = e.i * 2; if (a + 3 >= w.length) return null;
+  const L = Math.hypot(w[a + 2] - w[a], w[a + 3] - w[a + 1]) || .001, t = Math.min(1, p.prog / L);
+  return [w[a] + (w[a + 2] - w[a]) * t, w[a + 1] + (w[a + 3] - w[a + 1]) * t];
+}
 function wp(p, k){ return [k % W + .5 + p.off, ((k / W) | 0) + .5 + p.off]; }
 function goTo(p, bid, until, act, walkAct){
   p.sleep = false;
@@ -872,7 +904,7 @@ function goTo(p, bid, until, act, walkAct){
   p.car = hasCar(p) && p.path.length >= 7;
   if (p.car){ p.path = route(p.loc, bid, true); addFlow(p.path); }
   WALK.delete(p.id);
-  if (!p.car){ const w = pedRoute(p.loc, bid, p); if (w) WALK.set(p.id, { s: S, d: bid, w, i: 0 }); }
+  if (!p.car){ const w = pedRoute(p.loc, bid, p); if (w) WALK.set(p.id, { s: S, d: bid, w, i: 0, rv: roadsVer }); }
   p.dest = bid; p.du = until; p.da = act; p.act = walkAct || ('Идёт · ' + S.buildings[bid].name);
   if (p.car) p.act = p.act.replace(/^Идёт/, 'Едет');
 }
@@ -995,7 +1027,13 @@ function updatePerson(p, dt){
   if (p.st === 'walk'){
     const we = !p.car && WALK.get(p.id);
     if (we && we.s === S && we.d === p.dest){
-      const w = we.w, n = w.length / 2 - 1; p.prog += speedOf(p) * dt;
+      if (we.rv !== roadsVer){
+        /* дороги изменились: строим тротуарный маршрут заново от текущей точки, без телепортов */
+        we.rv = roadsVer; const q = wpos(we, p);
+        if (q && we.i < w0(we)){ const w2 = pedRoute(p.loc, p.dest, p, { x: q[0], y: q[1] }); if (w2){ we.w = w2; we.i = 0; p.prog = 0; } }
+      }
+      const w = we.w, n = w.length / 2 - 1;
+      { const a0 = we.i * 2, L0 = a0 + 3 < w.length ? Math.hypot(w[a0 + 2] - w[a0], w[a0 + 3] - w[a0 + 1]) : 1; p.prog += speedOf(p) * dt * (L0 < .3 ? .85 : 1); }
       while (we.i < n){ const a = we.i * 2, L = Math.hypot(w[a + 2] - w[a], w[a + 3] - w[a + 1]) || .001; if (p.prog >= L){ p.prog -= L; we.i++; } else break; }
       if (we.i >= n) arrive(p);
       return;
@@ -5613,7 +5651,7 @@ function rbAdjust(x, y, a, lane0){
     if (d > 2.1 || d < 1e-4) continue;
     const R0 = ped ? 2.0 : 1.55 + (lane0 > 0 ? .2 : -.15);
     if (d >= R0) return [x, y, a];
-    const k = Math.min(1, (R0 - d) / .6), ux = vx / d, uy = vy / d, nd = d + (R0 - d) * k, tang = Math.atan2(uy, ux) - Math.PI / 2;
+    const k0 = Math.min(1, (R0 - d) / (ped ? 1 : .6)), k = ped ? k0 * k0 * (3 - 2 * k0) : k0, ux = vx / d, uy = vy / d, nd = d + (R0 - d) * k, tang = Math.atan2(uy, ux) - Math.PI / 2;
     return [ox + ux * nd, oy + uy * nd, ped ? a : a + Math.atan2(Math.sin(tang - a), Math.cos(tang - a)) * k * .8];
   }
   const tx = Math.floor(x), ty = Math.floor(y);
@@ -5622,7 +5660,7 @@ function rbAdjust(x, y, a, lane0){
     const ox = cx + .5, oy = cy + .5, vx = x - ox, vy = y - oy, d = Math.hypot(vx, vy);
     const R0 = ped ? 1.42 : 1.0 + (lane0 > 0 ? .12 : -.08);
     if (d >= R0 || d < 1e-4) return [x, y, a];
-    const k = Math.min(1, (R0 - d) / .5), ux = vx / d, uy = vy / d;
+    const k0 = Math.min(1, (R0 - d) / (ped ? .9 : .5)), k = ped ? k0 * k0 * (3 - 2 * k0) : k0, ux = vx / d, uy = vy / d;
     const nx = ox + ux * (d + (R0 - d) * k), ny = oy + uy * (d + (R0 - d) * k);
     const tang = Math.atan2(uy, ux) - Math.PI / 2;
     return [nx, ny, ped ? a : a + Math.atan2(Math.sin(tang - a), Math.cos(tang - a)) * k * .8];
@@ -6099,7 +6137,7 @@ function personPos(p, now){
   if (p.st === 'walk' && p.path && p.car && p.pi < p.path.length - (NO_DRIVE.includes((S.buildings[p.dest] || {}).type) ? 2 : 1)) return pose(p.path, p.pi, p.prog, .165, hash(p.id * 3) < .5);
   if (p.st === 'walk' && !p.car){
     const we = WALK.get(p.id);
-    if (we && we.s === S && we.d === p.dest){ const w = we.w, a = we.i * 2; if (a + 3 < w.length){ const L = Math.hypot(w[a + 2] - w[a], w[a + 3] - w[a + 1]) || .001, t = Math.min(1, p.prog / L); return [w[a] + (w[a + 2] - w[a]) * t, w[a + 1] + (w[a + 3] - w[a + 1]) * t]; } }
+    if (we && we.s === S && we.d === p.dest){ const q = wpos(we, p); if (q) return q; }
   }
   if (p.st === 'walk' && p.path && p.pi < p.path.length - 1){
     const q = pose(p.path, p.pi, p.prog, p.off >= 0 ? .41 : -.41); return [q[0], q[1]];
