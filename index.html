@@ -403,6 +403,7 @@ const TYPES = {
   museum:  {n:'Музей',       cap:0,  jobs:6,  cost:3000, h:.6,  t:['экскурсовод','смотритель музея']},
   theater: {n:'Театр',       cap:0,  jobs:10, cost:3500, h:.7,  t:['актёр','режиссёр','билетёр']},
   ferris:  {n:'Колесо обозрения', cap:0, jobs:3, cost:2000, h:.2, t:['оператор аттракциона']},
+  amuse:   {n:'Парк аттракционов', cap:0, jobs:12, cost:6000, h:0, fw:4, fh:4, t:['оператор аттракциона','кассир','аниматор','механик аттракционов','продавец мороженого']},
   stadium: {n:'Стадион',     cap:0,  jobs:12, cost:6000, h:.35, fw:2, fh:2, t:['тренер','футболист','охранник']},
   tvtower: {n:'Телебашня',   cap:0,  jobs:4,  cost:5000, h:.3,  t:['инженер связи']},
   powerplant:{n:'Электростанция', cap:0, jobs:15, cost:5000, h:.5, fw:2, fh:2, t:['энергетик','инженер','машинист турбины']},
@@ -519,6 +520,7 @@ function makeName(b){
     case 'museum': return pick(['Краеведческий музей','Художественный музей','Музей истории города']);
     case 'theater': return 'Драматический театр';
     case 'ferris': return 'Колесо обозрения «Высота»';
+    case 'amuse': return 'Парк аттракционов «' + pick(['Луна-парк','Солнышко','Карусель','Сказка','Фантазия']) + '»';
     case 'stadium': return 'Стадион «' + pick(['Труд','Звезда','Олимп','Спартак','Динамо']) + '»';
     case 'tvtower': return 'Городская телебашня';
     case 'thouse': case 'block': return address(b);
@@ -812,7 +814,7 @@ function decide(p){
     if (h >= 18 && h < 22 && p.age >= 14 && r < .2 && go('theater', 'Смотрит спектакль', 'Идёт в театр', 60)) return;
     if (wknd && h >= 8 && h < 12 && p.age >= 50 && r < .3 && go('church', 'На службе в соборе', 'Идёт в собор')) return;
     if (h >= 10 && h < 18 && r < .1 && go('museum', 'Разглядывает экспонаты в музее', 'Идёт в музей')) return;
-    if (h >= 10 && h < 21 && r >= .1 && r < .18 && go('ferris', 'Катается на колесе обозрения', 'Идёт к колесу обозрения')) return;
+    if (h >= 10 && h < 21 && r >= .1 && r < .18 && (go('amuse', pick(['Катается на колесе обозрения','Катается на американских горках','Катается на карусели','Ест сахарную вату у аттракционов']), 'Идёт в парк аттракционов', 30) || go('ferris', 'Катается на колесе обозрения', 'Идёт к колесу обозрения'))) return;
     if (h >= 9 && h < 20 && r >= .18 && r < .24 && go('monument', 'Фотографируется у памятника', 'Идёт к памятнику')) return;
     if (h >= 9 && h < 19 && r >= .24 && r < .3 && p.age >= 10 && go('boatst', 'Катается на лодке', 'Идёт на лодочную станцию', 30)) return;
     if (r >= .3 && r < .5 && go(R() < .5 ? 'bigpark' : 'square', R() < .5 ? 'Гуляет по аллеям' : 'Сидит на лавочке', 'Идёт гулять')) return;
@@ -842,7 +844,7 @@ function updatePerson(p, dt){
     else if (t === 'cafe'){ hu += 50; s += 22; f += 15; }
     else if (t === 'shop'){ f += 17; hu += 10; s += 6; }
     else if (t === 'park' || t === 'beach' || t === 'square' || t === 'bigpark'){ f += t === 'beach' ? 38 : 33; s += 10; e += 1; }
-    else if (['museum','theater','ferris','stadium','church','monument','boatst'].includes(t)){ f += 32; s += 12; }
+    else if (['museum','theater','ferris','amuse','stadium','church','monument','boatst'].includes(t)){ f += t === 'amuse' ? 40 : 32; s += 12; }
     else f += 2;
   }
   n.e = clamp(n.e + e * hrs, 0, 100); n.h = clamp(n.h + hu * hrs, 0, 100);
@@ -859,7 +861,7 @@ function updatePerson(p, dt){
   p.mood += (clamp(tgt, 0, 100) - p.mood) * Math.min(1, hrs * 0.4);
 
   if (p.st === 'walk'){
-    if (!(p.car && redAhead(p, wp, speedOf(p) * dt))) p.prog += speedOf(p) * dt;
+    if (!(p.car && ((typeof carBlocked === 'function' && carBlocked(p)) || redAhead(p, wp, speedOf(p) * dt)))) p.prog += speedOf(p) * dt;
     while (p.pi < p.path.length - 1){
       const a = wp(p, p.path[p.pi]), b = wp(p, p.path[p.pi + 1]);
       const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 0.001;
@@ -996,8 +998,8 @@ function bestLot(lots, kind){
   }
   return best;
 }
-const BUILD_DAYS = {taxipark:1.2, house:.6, thouse:.9, apt:1.5, tower:2.6, shop:.7, cafe:.7, factory:1.6, office:1.8, park:.5, school:2, hospital:2.4, police:1.3, fire:1.3, port:2, beach:.4, depot:1.5, airport:4, boatst:.6, square:.4, bigpark:1.4, monument:.8, church:3, museum:2.2, theater:2.4, ferris:1.6, stadium:3, tvtower:2.6, powerplant:3, waterworks:2, watertower:1, landfill:1.2, gas:.8, kinder:1.3, cemetery:.8, yard:.3};
-const BLBL = {taxipark:'таксопарк', powerplant:'электростанция', waterworks:'водоканал', watertower:'водонапорная башня', landfill:'мусорный полигон', gas:'заправка', kinder:'детский сад', cemetery:'кладбище', yard:'двор', depot:'автобусный парк', airport:'аэропорт', boatst:'лодочная станция', square:'сквер', bigpark:'большой парк', monument:'памятник', church:'собор', museum:'музей', theater:'театр', ferris:'колесо обозрения', stadium:'стадион', tvtower:'телебашня', house:'жилой дом', apt:'многоэтажка', tower:'высотка', shop:'магазин', cafe:'кафе', factory:'предприятие', office:'офис', park:'парк', school:'школа', hospital:'больница', police:'полицейский участок', fire:'пожарная часть', port:'порт', beach:'пляж'};
+const BUILD_DAYS = {taxipark:1.2, amuse:3, house:.6, thouse:.9, apt:1.5, tower:2.6, shop:.7, cafe:.7, factory:1.6, office:1.8, park:.5, school:2, hospital:2.4, police:1.3, fire:1.3, port:2, beach:.4, depot:1.5, airport:4, boatst:.6, square:.4, bigpark:1.4, monument:.8, church:3, museum:2.2, theater:2.4, ferris:1.6, stadium:3, tvtower:2.6, powerplant:3, waterworks:2, watertower:1, landfill:1.2, gas:.8, kinder:1.3, cemetery:.8, yard:.3};
+const BLBL = {taxipark:'таксопарк', amuse:'парк аттракционов', powerplant:'электростанция', waterworks:'водоканал', watertower:'водонапорная башня', landfill:'мусорный полигон', gas:'заправка', kinder:'детский сад', cemetery:'кладбище', yard:'двор', depot:'автобусный парк', airport:'аэропорт', boatst:'лодочная станция', square:'сквер', bigpark:'большой парк', monument:'памятник', church:'собор', museum:'музей', theater:'театр', ferris:'колесо обозрения', stadium:'стадион', tvtower:'телебашня', house:'жилой дом', apt:'многоэтажка', tower:'высотка', shop:'магазин', cafe:'кафе', factory:'предприятие', office:'офис', park:'парк', school:'школа', hospital:'больница', police:'полицейский участок', fire:'пожарная часть', port:'порт', beach:'пляж'};
 function build(type, l, o){
   if (!l || S.money < TYPES[type].cost) return false;
   o = o || {};
@@ -1191,7 +1193,7 @@ function mayor(){
     square: st.pop >= 40 && (st.counts.square || 0) < st.pop / 45 ? 1.5 : 0,
     bigpark: st.pop >= 200 && (st.counts.bigpark || 0) < 1 + Math.floor(st.pop / 700) ? 1.9 : 0,
     land: nextLandmark(st) ? 2.3 : 0,
-    powerplant: st.pop >= 60 && (st.counts.powerplant || 0) * 450 < st.pop + 40 ? 2.8 + (S.noPower ? 2 : 0) : 0,
+    powerplant: st.pop >= 60 && S.buildings.reduce((a, b) => a + (b.type === 'powerplant' ? plantCap(b) : 0), 0) < st.pop + 40 ? 2.8 + (S.noPower ? 2 : 0) : 0,
     waterworks: st.pop >= 50 && (st.counts.waterworks || 0) * 400 + (st.counts.watertower || 0) * 150 < st.pop + 40 ? 2.7 + (S.noWater ? 2 : 0) : 0,
     watertower: st.pop >= 120 && (st.counts.watertower || 0) < Math.floor(st.pop / 300) + 1 && st.counts.waterworks ? 1.4 : 0,
     landfill: st.pop >= 80 && (st.counts.landfill || 0) < 1 + Math.floor(st.pop / 900) ? 2.5 + (S.trash ? 1.5 : 0) : 0,
@@ -1224,8 +1226,8 @@ function mayor(){
       case 'boatst': ok = build('boatst', shoreLot(false)); break;
       case 'square': ok = build('square', bestLot(lots, 'civic')); break;
       case 'bigpark': ok = build('bigpark', findArea(2, 2, 'mid', 'bigpark')); break;
-      case 'land': { const t = nextLandmark(st); ok = build(t, t === 'stadium' ? findArea(2, 2, 'mid', 'stadium') : bestLot(lots, t === 'tvtower' ? 'factory' : 'civic'), {startMsg:'🏗 Начали строить достопримечательность: ' + BLBL[t], doneMsg:'🏛 В городе появилась достопримечательность: %s'}); break; }
-      case 'powerplant': ok = build('powerplant', findArea(2, 2, 'far', 'powerplant')) || roadToZone('ind'); break;
+      case 'land': { const t = nextLandmark(st); if (t === 'amuse'){ ok = planAmuse(); break; } ok = build(t, t === 'stadium' ? findArea(2, 2, 'mid', 'stadium') : bestLot(lots, t === 'tvtower' ? 'factory' : 'civic'), {startMsg:'🏗 Начали строить достопримечательность: ' + BLBL[t], doneMsg:'🏛 В городе появилась достопримечательность: %s'}); break; }
+      case 'powerplant': { const pp = S.buildings.filter(b => b.type === 'powerplant'); ok = pp.length ? pp.sort((a, b) => fwOf(a) * fhOf(a) - fwOf(b) * fhOf(b)).some(b => growPlant(b)) || (S.noPower && pp.every(b => (b.lvl || 0) >= 4 || b.reno) && build('powerplant', findArea(2, 2, 'far', 'powerplant'))) : (build('powerplant', findArea(2, 2, 'far', 'powerplant')) || roadToZone('ind')); break; }
       case 'waterworks': ok = build('waterworks', findArea(2, 1, 'water', 'waterworks')); break;
       case 'watertower': ok = build('watertower', bestLot(lots, 'civic')); break;
       case 'landfill': ok = build('landfill', findArea(2, 2, 'far', 'landfill')) || roadToZone('ind'); break;
@@ -1278,7 +1280,7 @@ function incidents(){
       delete b.crime;
     }
   }
-  const burnable = S.buildings.filter(b => !['park','beach','square','bigpark','airport','monument','stadium','tvtower','ferris','yard','cemetery','landfill','watertower','site','void'].includes(b.type) && !b.fire);
+  const burnable = S.buildings.filter(b => !['park','beach','square','bigpark','airport','monument','stadium','tvtower','ferris','amuse','yard','cemetery','landfill','watertower','site','void'].includes(b.type) && !b.fire);
   if (burnable.length && R() < burnable.length * 0.00011){
     const b = pick(burnable), st = nearest('fire', b);
     b.fire = S.t + (st ? 110 : 320); b.fireBy = st ? st.id : -1; S.fires = (S.fires || 0) + 1;
@@ -1457,7 +1459,7 @@ function gnoise(x, y){
 const gdist = (x, y) => dist(x, y) - gnoise(x, y) * 10;
 function streetName(list, d, k){ const di = S.dmap ? S.dseeds.indexOf(d) : 0; return list[(((k + di * 5) % list.length) + list.length) % list.length]; }
 
-const LANDMARKS = [['monument', 60], ['church', 150], ['museum', 200], ['theater', 260], ['ferris', 320], ['stadium', 380], ['tvtower', 480]];
+const LANDMARKS = [['monument', 60], ['church', 150], ['museum', 200], ['theater', 260], ['amuse', 320], ['stadium', 380], ['tvtower', 480]];
 function nextLandmark(st){ for (const [t, n] of LANDMARKS) if (st.pop >= n && !st.counts[t]) return t; return null; }
 function findArea(w, h, kind, type){
   let best = null, bs = -1e9; const wdist = kind === 'water' ? waterDist() : null; if (type) updateZoneMaps();
@@ -1577,7 +1579,7 @@ function growOrganic_(){
 
 function utilities(){
   const pop = S.people.length; let pw = 0, wt = 0, lf = 0;
-  for (const b of S.buildings){ if (b.type === 'powerplant') pw += 450 * (1 + (b.lvl || 0) * .6); else if (b.type === 'waterworks') wt += 400 * (1 + (b.lvl || 0) * .6); else if (b.type === 'watertower') wt += 150; else if (b.type === 'landfill') lf++; }
+  for (const b of S.buildings){ if (b.type === 'powerplant') pw += plantCap(b); else if (b.type === 'waterworks') wt += 400 * (1 + (b.lvl || 0) * .6); else if (b.type === 'watertower') wt += 150; else if (b.type === 'landfill') lf++; }
   const np = pop > 60 && pop > pw + 40, nw = pop > 50 && pop > wt + 40, tr = pop >= 120 && !lf;
   const h = S.lastH % 24;
   if (np && !S.noPower) log('sad', '⚡ Городу не хватает электричества: вечерами отключают свет. Мэр ищет место для станции');
@@ -1689,7 +1691,7 @@ function findRectR(w, h, allow, scoreFn){
 function startSiteR(x, y, w, h, next, opts, roads){
   if (roads && roads.length){
     removeRoadTiles(roads);
-    const s = startSite(x, y, w, h, next, Object.assign({}, opts, {startMsg:(opts.startMsg || ('🚧 Началась стройка: ' + (opts.label || TYPES[next].n.toLowerCase()))) + '. Ради стройки кусок улицы перекрыли и разобрали'}));
+    const s = startSite(x, y, w, h, next, opts.noRoadMsg ? opts : Object.assign({}, opts, {startMsg:(opts.startMsg || ('🚧 Началась стройка: ' + (opts.label || TYPES[next].n.toLowerCase()))) + '. Ради стройки кусок улицы перекрыли и разобрали'}));
     if (!s){ for (const t of roads) S.road[t] = 1; roadsVer++; }
     else for (const b of S.buildings) if (b.e >= 0 && !S.road[b.e]) b.e = -1;
     return s;
@@ -1718,7 +1720,7 @@ function startSite(x, y, w, h, next, opts){
   for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++){ const i = idx(x + dx, y + dy); if (S.terrain[i] === 2) S.terrain[i] = 0; }
   const demo = olds.length ? (.5 + R() * .6) * DAY : .15 * DAY, build = (opts.days || (1.5 + R() * 1.8)) * DAY;
   const s = placeB('site', x, y, true, {fw:w, fh:h});
-  s.site = {next, t0:S.t, t1:S.t + demo, t2:S.t + demo + build, waiters, demo:olds.length > 0, label:opts.label || '', cap:opts.cap, gen:opts.gen, v:opts.v, nfw:opts.nfw, nfh:opts.nfh, road:opts.road, av:opts.av, msg:opts.msg, shape:opts.shape, jobs:opts.jobs, merge:opts.merge ? 1 : 0, mayor:opts.mayor ? 1 : 0, quiet:opts.quiet ? 1 : 0, doneMsg:opts.doneMsg, crane:w * h >= 2 || ['apt','block','zhk','tower','supermarket','parkade'].includes(next)};
+  s.site = {next, t0:S.t, t1:S.t + demo, t2:S.t + demo + build, waiters, demo:olds.length > 0, label:opts.label || '', cap:opts.cap, gen:opts.gen, v:opts.v, nfw:opts.nfw, nfh:opts.nfh, road:opts.road, av:opts.av, msg:opts.msg, parent:opts.parent, nr:opts.nr, shape:opts.shape, jobs:opts.jobs, merge:opts.merge ? 1 : 0, mayor:opts.mayor ? 1 : 0, quiet:opts.quiet ? 1 : 0, doneMsg:opts.doneMsg, crane:w * h >= 2 || ['apt','block','zhk','tower','supermarket','parkade'].includes(next)};
   s.name = 'Стройка: ' + (opts.label || (TYPES[next] ? TYPES[next].n.toLowerCase() : 'объект'));
   if (opts.log !== false) log('build', opts.startMsg || ('🚧 ' + (desc.length ? 'Снесли ' + (desc.length > 1 ? desc.length + (desc.length < 5 ? ' старых здания' : ' старых зданий') : '«' + desc[0] + '»') + ', здесь построят ' : 'Началась стройка: ') + (opts.label || TYPES[next].n.toLowerCase())), null, s.id);
   return s;
@@ -1727,6 +1729,21 @@ function finishSite(s){
   const st = s.site;
   for (const id of s.wk){ const p = P.get(id); if (p && p.job === s.id){ p.job = -1; p.title = ''; } }
   s.wk = [];
+  if (st.next === 'ext'){
+    killBuilding(s);
+    const pb = S.buildings[st.parent], [nx, ny, nw, nh] = st.nr || [0, 0, 0, 0];
+    if (pb && pb.type !== 'void' && pb.type !== 'site'){
+      let ok = true;
+      for (let dy = 0; dy < nh && ok; dy++) for (let dx = 0; dx < nw; dx++){ const i = idx(nx + dx, ny + dy); const bi = S.bld[i]; if (S.road[i] || (bi >= 0 && bi !== pb.id)){ ok = false; break; } }
+      if (ok){
+        pb.x = nx; pb.y = ny; pb.fw = nw; pb.fh = nh; pb.e = -1; if (st.jobs != null) pb.jobs = st.jobs;
+        for (let dy = 0; dy < nh; dy++) for (let dx = 0; dx < nw; dx++){ const i = idx(nx + dx, ny + dy); S.bld[i] = pb.id; if (S.terrain[i] === 2) S.terrain[i] = 0; }
+        if (st.msg) log('build', st.msg.replace('%s', pb.name).replace('%n', nw + '×' + nh), null, pb.id);
+        addFx(nx + nw / 2, ny, '🎉');
+      }
+    }
+    return;
+  }
   if (st.next === 'road'){
     const cells = [];
     for (let dy = 0; dy < fhOf(s); dy++) for (let dx = 0; dx < fwOf(s); dx++) cells.push(idx(s.x + dx, s.y + dy));
@@ -1904,6 +1921,7 @@ function renew(){
     ['widen', pop >= 140 && S.money > 1500 ? 1.6 + Math.min(3, (S.flowMax || 0) / 60) : 0],
     ['avext', pop >= 140 && S.money > 2500 && S.av ? 2.6 : 0],
     ['bridge4', pop >= 140 && S.money > 3000 && S.av ? 2.8 : 0],
+    ['amuse', S.money > 3000 && S.buildings.some(b => b.type === 'amuse' && (fwOf(b) < amuseTarget(pop) || fhOf(b) < amuseTarget(pop))) ? 3 : 0],
     ['buffer', 3.2],
     ['reno', 2],
     ['infra', 1.4],
@@ -1917,6 +1935,7 @@ function renew(){
     else if (k === 'widen') ok = typeof planWiden === 'function' && planWiden();
     else if (k === 'avext') ok = extendAvenue();
     else if (k === 'bridge4') ok = widenBridge();
+    else if (k === 'amuse') ok = growAmuse();
     else if (k === 'buffer') ok = planBuffer();
     else if (k === 'reno') ok = planRenovation(st);
     else if (k === 'infra') ok = planInfra();
@@ -1982,6 +2001,7 @@ function addFlow(path){
    never right next to another parallel street or avenue (no seas of asphalt) */
 const WIDEN_DEMO = ['house','thouse','yard','shop','cafe','park','square','gas','apt'];
 const WIDEN_EXT = WIDEN_DEMO.concat(['office','factory','tower','parkade','kinder','watertower','monument']);
+const RELOC = ['police','fire','hospital','school','kinder','hall','amuse','church','museum','theater','depot','taxipark','gas','supermarket','parkade','watertower','monument','bigpark','tvtower','stadium','ferris','office','factory','shop','cafe','park','square','tower','apt'];
 let PAV = null;
 const avx = i => (S.av && S.av[i]) || (PAV && PAV[i]) || 0;
 const axOfCode = a => a === 3 || a === 4 ? 'h' : a ? 'v' : null;
@@ -2032,7 +2052,7 @@ function widenPlan(best, ext){
     for (const s of [1, -1]){
       const codeOld = axes === 'h' ? (s > 0 ? 3 : 4) : (s > 0 ? 1 : 2), codeNew = axes === 'h' ? (s > 0 ? 4 : 3) : (s > 0 ? 2 : 1);
       const sx = px * s, sy = py * s;
-      let ok = true, cost = 0;
+      let ok = true, cost = 0; const reloc = [];
       for (const t of seg){
         const n = at(t, sx, sy); if (n < 0){ ok = false; break; }
         const nx = n % W, ny = (n / W) | 0;
@@ -2041,7 +2061,10 @@ function widenPlan(best, ext){
           if (!isJn(t) || rc(n, ax, ay) || rc(n, -ax, -ay)){ ok = false; break; }
         } else {
           const bi = S.bld[n];
-          if (bi >= 0){ const b = S.buildings[bi]; if (!(ext ? WIDEN_EXT : WIDEN_DEMO).includes(b.type) || fwOf(b) !== 1 || fhOf(b) !== 1){ ok = false; break; } cost += b.res.length * 3 + 2 + (ext ? 0 : b.wk.length); }
+          if (bi >= 0){ const b = S.buildings[bi];
+            if ((ext ? WIDEN_EXT : WIDEN_DEMO).includes(b.type) && fwOf(b) === 1 && fhOf(b) === 1) cost += b.res.length * 3 + 2 + (ext ? 0 : b.wk.length);
+            else if (RELOC.includes(b.type) && !b.reno){ if (!reloc.includes(b)){ reloc.push(b); cost += 14 + b.res.length * 3 + fwOf(b) * fhOf(b) * 2; } }
+            else { ok = false; break; } }
           const far = at(n, sx, sy);
           if (far >= 0 && (avx(far) || (S.road[far] && (rc(far, ax, ay) || rc(far, -ax, -ay))))){ ok = false; break; }
         }
@@ -2068,7 +2091,8 @@ function widenPlan(best, ext){
       }
       if (!ok) continue;
       const sc = seg.length * 2 - cost / seg.length;
-      if (!pick || sc > pick.sc) pick = {sc, axes, s, seg, codeOld, codeNew, px, py, bx:best % W, by:(best / W) | 0, ext};
+      if (reloc.length > 2 || reloc.some(b => b.res.length > 0 && fwOf(b) * fhOf(b) > 1)) continue;
+      if (!pick || sc > pick.sc) pick = {sc, axes, s, seg, codeOld, codeNew, px, py, bx:best % W, by:(best / W) | 0, ext, reloc};
     }
   }
   return pick;
@@ -2092,11 +2116,37 @@ function extendAvenue(){
     return false;
   } finally { PAV = null; }
 }
+/* a building in the way of an avenue is demolished; the mayor builds it again nearby */
+function relocate(b, street){
+  const t = b.type, name = b.name, fw = fwOf(b), fh = fhOf(b);
+  vacate(b, b); killBuilding(b);
+  if (!S.reloc) S.reloc = [];
+  const ofT = () => S.buildings.filter(o => o.type === t || (o.type === 'site' && o.site.next === t)).length;
+  if (t !== 'hall' && t !== 'amuse' && TYPES[t] && !LANDMARKS.some(l => l[0] === t)) S.reloc.push({t, fw, fh, name, x:b.x, y:b.y, tries:0, cnt:ofT()});
+  log('build', '🚜 ' + name + ' мешает прямому проспекту по улице ' + street + ': здание сносят, ' + (t === 'hall' ? 'мэрия переедет в новое здание' : t === 'amuse' ? 'парк аттракционов откроют заново на новом месте' : 'новое построят неподалёку'));
+}
+const RELOC_KIND = {school:'civic', hospital:'civic', police:'civic', fire:'civic', church:'civic', museum:'civic', theater:'civic', monument:'civic', watertower:'civic', kinder:'res', gas:'gas', shop:'com', cafe:'com', office:'office', factory:'factory', park:'park', square:'civic', tower:'res', apt:'res', parkade:'com', ferris:'civic', tvtower:'civic'};
+function processReloc(){
+  if (!S.reloc || !S.reloc.length) return false;
+  const it = S.reloc[0]; it.tries++;
+  if (S.buildings.filter(o => o.type === it.t || (o.type === 'site' && o.site.next === it.t)).length > (it.cnt || 0)){ S.reloc.shift(); return false; }
+  let l = null;
+  if (it.fw * it.fh === 1){ const all = findLots(), lots = all.filter(o => Math.hypot(o.x - it.x, o.y - it.y) < 20); l = bestLot(lots, RELOC_KIND[it.t] || 'civic') || (it.tries > 6 ? bestLot(all, RELOC_KIND[it.t] || 'civic') : null); }
+  else l = findArea(it.fw, it.fh, 'mid', it.t);
+  if (l && S.money > (TYPES[it.t].cost || 0) * .5){
+    const s = startSite(l.x, l.y, it.fw, it.fh, it.t, {allow:[], cost:Math.round((TYPES[it.t].cost || 0) * .5), days:(BUILD_DAYS[it.t] || 1.2), label:it.name, v:it.t === 'supermarket' ? (it.fw > it.fh ? 'h' : 'v') : undefined, mayor:true,
+      startMsg:'🏗 ' + it.name + ' строят заново на новом месте', doneMsg:'🏁 ' + it.name + ' открылся на новом месте'});
+    if (s){ S.reloc.shift(); return true; }
+  }
+  if (it.tries > 24) S.reloc.shift();
+  return false;
+}
 function startWiden(pl){
   const {axes, s, seg, codeOld, codeNew, px, py, bx, by, ext, bridge} = pl;
   const av = [], newCells = [];
   for (const t of seg){ const n = idx(t % W + px * s, ((t / W) | 0) + py * s); av.push([t, codeOld], [n, codeNew]); if (!S.road[n]) newCells.push(n); }
-  const cost = 120 * seg.length; if (S.money < cost) return false;
+  const cost = 120 * seg.length + (pl.reloc || []).length * 600; if (S.money < cost) return false;
+  for (const b of pl.reloc || []) relocate(b, axes === 'h' ? hStreet(by, bx) : vStreet(bx, by));
   const t2 = S.t + (1 + R() * 1.2) * DAY;
   let chunk = [];
   const flushChunk = () => {
@@ -2209,7 +2259,7 @@ function accessKept(del){
   for (const t of del) S.road[t] = 1;
   return ok;
 }
-const NO_DRIVE_S = ['park','square','bigpark','beach','cemetery','monument','ferris','watertower'];
+const NO_DRIVE_S = ['park','square','bigpark','beach','cemetery','monument','ferris','watertower','amuse'];
 function cutRoads(del){
   const set = new Set(del), att = new Set();
   for (const t of del){ const x = t % W, y = (t / W) | 0; for (const [dx, dy] of D4){ if (!inb(x + dx, y + dy)) continue; const n = idx(x + dx, y + dy); if (S.road[n] && !set.has(n)) att.add(n); } }
@@ -2457,6 +2507,80 @@ function mergeParks(){
   if (s) addFx(x + w / 2, y, '🌳');
   return !!s;
 }
+/* ---------- buildings that grow in place: a strip next to them is cleared (houses, even streets) and joined on ---------- */
+const plantCap = b => 450 * Math.max(1, fwOf(b) * fhOf(b) / 4) * (1 + (b.lvl || 0) * .6);
+function stripOf(b, side){
+  const x = b.x, y = b.y, w = fwOf(b), h = fhOf(b);
+  if (side === 0) return {sx:x + w, sy:y, sw:1, sh:h, nr:[x, y, w + 1, h]};
+  if (side === 1) return {sx:x - 1, sy:y, sw:1, sh:h, nr:[x - 1, y, w + 1, h]};
+  if (side === 2) return {sx:x, sy:y + h, sw:w, sh:1, nr:[x, y, w, h + 1]};
+  return {sx:x, sy:y - 1, sw:w, sh:1, nr:[x, y - 1, w, h + 1]};
+}
+function growBuilding(b, sides, allow, o){
+  if (S.buildings.some(x => x.type === 'site' && x.site.next === 'ext' && x.site.parent === b.id)) return false;
+  const cand = [];
+  for (const side of sides){
+    const st = stripOf(b, side), r = rectFreeR(st.sx, st.sy, st.sw, st.sh, allow); if (!r) continue;
+    if (o.ok && !o.ok(st)) continue;
+    const people = r.olds.reduce((a, x) => a + x.res.length, 0);
+    cand.push({st, r, sc:-people * .4 - r.olds.length * .8 - r.roads.length * 2 + R() * 1.5 + (o.pref && o.pref.includes(side) ? 3 : 0)});
+  }
+  cand.sort((a, c) => c.sc - a.sc);
+  for (const {st, r} of cand){
+    const [nx, ny, nw, nh] = st.nr;
+    if (!roadsCuttable(r.roads, nx, ny, nw, nh, r.olds.concat([b]))) continue;
+    if (S.money < o.cost) return false;
+    const demo = r.olds.length, cut = r.roads.length;
+    const msg = o.startMsg + (demo ? ': под снос ' + demo + (demo === 1 ? ' здание' : demo < 5 ? ' здания' : ' зданий') : '') + (cut ? (demo ? ', ' : ': ') + 'кусок улицы разберут' : '');
+    const s = startSiteR(st.sx, st.sy, st.sw, st.sh, 'ext', {allow, cost:o.cost, days:o.days, label:o.label, startMsg:msg, noRoadMsg:true, parent:b.id, nr:st.nr, msg:o.doneMsg, jobs:o.jobs ? o.jobs(nw * nh) : undefined}, r.roads);
+    if (s){ s.site.startMsg = null; return true; }
+  }
+  return false;
+}
+const PLANT_ALLOW = ['house','thouse','yard','shop','cafe','park','square','gas','apt','office','factory','tower','parkade','kinder','watertower','monument','depot','taxipark'];
+function growPlant(b){
+  const area = fwOf(b) * fhOf(b);
+  const lvlUp = () => (b.lvl || 0) < 4 && !b.reno && startReno(b, 40, 'ТЭЦ запустила новый энергоблок · ' + b.name, {}) && (log('build', '⚡ На ' + b.name + ' меняют турбины на более мощные', null, b.id), true);
+  if (area >= 36 || S.money < 2600) return lvlUp();
+  const pref = fwOf(b) <= fhOf(b) ? [0, 1] : [2, 3];
+  return growBuilding(b, [0, 1, 2, 3], PLANT_ALLOW, {cost:2500, days:1.6 + R() * .6, label:'Новый энергоблок ТЭЦ', pref,
+    ok:st => st.nr[2] <= 6 && st.nr[3] <= 6,
+    startMsg:'⚡ ' + b.name + ' не строят заново, а расширяют: рядом ставят новый энергоблок с градирней',
+    doneMsg:'⚡ %s стала больше (%n): новый энергоблок дал ток, света хватит ещё на сотни квартир',
+    jobs:a => 15 + a * 2}) || lvlUp();
+}
+/* ---------- amusement park: one per city, grows from 4×4 up to 10×10 ---------- */
+const AMUSE_ALLOW = PLANT_ALLOW.filter(t => t !== 'depot' && t !== 'taxipark').concat(['ferris','bigpark','block']);
+const amuseTarget = pop => Math.min(10, 4 + Math.floor(Math.max(0, pop - 320) / 200));
+function planAmuse(){
+  if (S.buildings.some(b => b.type === 'amuse' || (b.type === 'site' && b.site.next === 'amuse'))) return false;
+  if (S.money < TYPES.amuse.cost + 800) return false;
+  updateZoneMaps();
+  const r = findRectR(4, 4, ['house','thouse','yard','shop','cafe','park','square','ferris','gas'], (x, y, olds) => {
+    for (let yy = y; yy < y + 4; yy++) for (let xx = x; xx < x + 4; xx++) if (zoneAt(xx, yy) === 'ind' || polluted(xx, yy)) return null;
+    const d = gdist(x + 2, y + 2), people = olds.reduce((a, b) => a + b.res.length, 0);
+    return -Math.abs(d - 11) - people * .3 - olds.length * .5 + R() * 3;
+  });
+  if (!r) return false;
+  const s = startSiteR(r.x, r.y, 4, 4, 'amuse', {allow:['house','thouse','yard','shop','cafe','park','square','ferris','gas'], cost:TYPES.amuse.cost, days:3 + R(), mayor:true,
+    startMsg:'🎡 В городе строят парк аттракционов: колесо обозрения, карусель и кафе в одном месте', doneMsg:'🎡 Открылся %s! Колесо обозрения теперь только здесь'}, r.roads);
+  return !!s;
+}
+function growAmuse(){
+  const b = S.buildings.find(x => x.type === 'amuse'); if (!b) return false;
+  const t = amuseTarget(S.people.length), w = fwOf(b), h = fhOf(b);
+  if (w >= t && h >= t) return false;
+  const sides = []; if (w < t) sides.push(0, 1); if (h < t) sides.push(2, 3);
+  return growBuilding(b, sides, AMUSE_ALLOW, {cost:1800, days:1.2 + R() * .5, label:'Расширение парка аттракционов', pref:w <= h ? [0, 1] : [2, 3],
+    ok:st => st.nr[2] <= 10 && st.nr[3] <= 10 && (() => { for (let dy = 0; dy < st.sh; dy++) for (let dx = 0; dx < st.sw; dx++) if (zoneAt(st.sx + dx, st.sy + dy) === 'ind') return false; return true; })(),
+    startMsg:'🎢 ' + b.name + ' расширяют под новые аттракционы',
+    doneMsg:'🎢 %s вырос до %n: появились новые аттракционы', jobs:a => 8 + Math.round(a * .6)});
+}
+function retireFerris(){
+  if (!S.buildings.some(b => b.type === 'amuse')) return false;
+  const f = S.buildings.find(b => b.type === 'ferris'); if (!f) return false;
+  return !!startSite(f.x, f.y, fwOf(f), fhOf(f), 'park', {allow:['ferris'], cost:0, days:.6, startMsg:'🎡 Отдельное колесо обозрения разобрали: теперь оно работает в парке аттракционов, а здесь будет сквер'});
+}
 function parkingNeed(){
   let cars = 0, slots = 0;
   for (const b of S.buildings){
@@ -2668,6 +2792,7 @@ function hourly(){
   updateZoneMaps();
   if (h % 3 === 0) renew();
   if (h % 2 === 1 && S.people.length >= 30) mergeParks();
+  processReloc();
   mayor(); if (S.money > 5000) mayor();
 }
 function die(p){
@@ -2677,7 +2802,7 @@ function die(p){
 }
 function daily(){
   const d = day();
-  checkExpand(); planHall(); fixBridges(3); tidyRoads(2);
+  checkExpand(); planHall(); fixBridges(3); tidyRoads(2); retireFerris();
   let inc = 0, upk = 0;
   for (const p of S.people){ inc += 2; if (p.job >= 0) inc += 15; }
   for (const b of S.buildings){
@@ -2929,6 +3054,13 @@ function fp(b){
     const j = (hash(b.id * 3 + 1) - .5) * .06; x0 += j; x1 += j;
   }
   return [x0, x1, y0, y1];
+}
+function plantTowers(b){
+  const [x0, x1, y0, y1] = fp(b), fw = fwOf(b), fh = fhOf(b);
+  if (fw * fh <= 4) return [[x1 - .42, y0 + .62], [x1 - .42, y1 - .2]];
+  const out = [];
+  for (let ty = y0 + .62; ty <= y1 - .15; ty += .85) for (let tx = x1 - .42; tx >= x0 + 1.55; tx -= .85) out.push([tx, ty]);
+  return out;
 }
 function renderBuilding(b, h){
   const T = b.type;
@@ -3351,7 +3483,8 @@ function renderBuilding(b, h){
         ctx.fillStyle = '#5c5a56'; ctx.beginPath(); ctx.ellipse(cx, by - th, r * .7, r * .22, 0, 0, 7); ctx.fill();
         ctx.fillStyle = '#b3afa8'; ctx.beginPath(); ctx.ellipse(cx, by, r, r * .3, 0, 0, Math.PI); ctx.fill();
       };
-      tower(x1 - .42, y0 + .62, .34, .95); tower(x1 - .42, y1 - .2, .34, .95);
+      for (const [tx, ty] of plantTowers(b)) tower(tx, ty, .34, .95);
+      if (fwOf(b) * fhOf(b) > 4){ for (let k = 1; k < Math.floor(fhOf(b)); k++){ const yy = y0 + k * (fhOf(b) - .1) / Math.floor(fhOf(b)) + .45; facade(hx0, hx1, Math.min(y1 - .7, yy), .5, '#c9cdd1'); flatRoof(hx0 - .02, Math.min(y1 - .7, yy) - .5 - .45, hx1 + .02, Math.min(y1 - .7, yy) - .5 + .01, '#8a9199', null); } }
       const cx = x0 + .85, ct = y0 - 1.15;
       ctx.fillStyle = hg(cx - .05, cx + .05, '#f0eeea', '#a9a49c'); ctx.fillRect(cx - .05, ct, .1, y0 + .3 - ct);
       ctx.fillStyle = '#d64545'; for (let k = 0; k < 4; k++) ctx.fillRect(cx - .05, ct + k * .22, .1, .08);
@@ -3652,6 +3785,115 @@ function drawParkTrees(P, grow){
     if (grow < 1){ const g = (grow - .3 - hash((k * 17 + P.X * 3 + P.Y) | 0) * .4) / .3; if (g <= 0) continue; s *= .35 + .45 * Math.min(1, g); }
     ctx.drawImage(treeSprite(t.v), t.x - s / 2, t.y - s * .58, s, s);
   }
+}
+/* ---------- amusement park: paving, a roller coaster round the edge and rides in 2×2 slots ---------- */
+const AMU_PLAN = new Map();
+function amuPlan(b){
+  const w = fwOf(b), h = fhOf(b), key = b.x + ',' + b.y + ',' + w + ',' + h + ':' + roadsVer;
+  const old = AMU_PLAN.get(b.id); if (old && old.key === key) return old;
+  const X = b.x, Y = b.y, P = {key, X, Y, w, h, rides:[], trees:[], coaster:null, gate:null};
+  const hs = k => hash((b.id * 977 + k * 131) | 0);
+  const roadAt = (x, y) => inb(x, y) && S.road[idx(x, y)];
+  for (const [sx, sy] of [[0, 1], [0, -1], [-1, 0], [1, 0]]){
+    const n = sx ? h : w;
+    for (let k = Math.floor(n / 2), g = 0; g < n; g++, k = Math.floor(n / 2) + (g % 2 ? -(g + 1) / 2 : g / 2)){
+      if (k < 0 || k >= n) continue;
+      const cx = sx ? (sx < 0 ? X - 1 : X + w) : X + k, cy = sx ? Y + k : (sy < 0 ? Y - 1 : Y + h);
+      if (roadAt(cx, cy)){ P.gate = {x:sx ? (sx < 0 ? X : X + w) : X + k + .5, y:sx ? Y + k + .5 : (sy < 0 ? Y : Y + h), sx, sy}; break; }
+    }
+    if (P.gate) break;
+  }
+  if (!P.gate) P.gate = {x:X + w / 2, y:Y + h, sx:0, sy:1};
+  let inset = 0;
+  if (Math.min(w, h) >= 5){ inset = .45; const m = .38; P.coaster = {x0:X + m, y0:Y + m, x1:X + w - m, y1:Y + h - m}; }
+  const order = ['ferris', 'carousel', 'kiosk', 'swing', 'coasterSt', 'drop', 'bumper', 'flume', 'teacups', 'kiosk', 'pirate', 'kiosk', 'tree', 'teacups', 'kiosk', 'tree'];
+  const sx0 = X + inset + .3, sy0 = Y + inset + .3, cw = (w - inset * 2 - .6), ch = (h - inset * 2 - .6);
+  const nx = Math.max(1, Math.floor(cw / 1.9)), ny = Math.max(1, Math.floor(ch / 1.9)), slots = [];
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) slots.push({x:sx0 + (i + .5) * cw / nx, y:sy0 + (j + .5) * ch / ny, r:Math.min(cw / nx, ch / ny) / 2});
+  slots.sort((a, c) => Math.hypot(a.x - X - w / 2, a.y - Y - h * .45) - Math.hypot(c.x - X - w / 2, c.y - Y - h * .45));
+  slots.forEach((sl, k) => { let t = order[k % order.length]; if (t === 'coasterSt' && !P.coaster) t = 'kiosk'; P.rides.push(Object.assign({t, ph:hs(k) * 6}, sl)); });
+  P.rides.sort((a, c) => a.y - c.y);
+  for (let k = 0; k < w * h * 1.2; k++){ const x = X + .2 + hs(k + 50) * (w - .4), y = Y + .25 + hs(k + 90) * (h - .4);
+    if (P.rides.some(r => Math.hypot(r.x - x, r.y - y) < r.r * .95)) continue; if (Math.hypot(x - P.gate.x, y - P.gate.y) < .8) continue; P.trees.push({x, y, v:(k * 3) % 8}); }
+  AMU_PLAN.set(b.id, P); return P;
+}
+function drawAmuseGround(b, now){
+  const P = amuPlan(b), {X, Y, w, h} = P;
+  ctx.fillStyle = '#e7dcc2'; rr(X + .03, Y + .03, w - .06, h - .06, .15); ctx.fill();
+  ctx.fillStyle = 'rgba(160,140,110,.12)'; for (let yy = Y; yy < Y + h; yy += .25) for (let xx = X + ((yy * 4) % 2) * .125; xx < X + w; xx += .25) ctx.fillRect(xx, yy, .12, .12);
+  for (const r of P.rides){
+    if (r.t === 'tree') { ctx.fillStyle = '#86c26c'; ctx.beginPath(); ctx.arc(r.x, r.y, r.r * .85, 0, 7); ctx.fill(); continue; }
+    ctx.fillStyle = r.t === 'flume' ? '#86c26c' : '#d5c7a6'; ctx.beginPath(); ctx.arc(r.x, r.y, r.r * .92, 0, 7); ctx.fill();
+    if (r.t === 'bumper'){ ctx.fillStyle = '#5a6570'; rr(r.x - r.r * .75, r.y - r.r * .55, r.r * 1.5, r.r * 1.1, .08); ctx.fill(); }
+    if (r.t === 'flume'){ ctx.strokeStyle = '#4f93c4'; ctx.lineWidth = .16; ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r * .7, r.r * .45, 0, 0, 7); ctx.stroke(); ctx.strokeStyle = '#9fd3f0'; ctx.lineWidth = .05; ctx.stroke(); }
+    if (r.t === 'teacups'){ ctx.fillStyle = '#f4d8e4'; ctx.beginPath(); ctx.arc(r.x, r.y, r.r * .7, 0, 7); ctx.fill(); }
+  }
+  if (P.coaster){ const c = P.coaster; ctx.strokeStyle = '#7a4a2a'; ctx.lineWidth = .1; rr(c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0, .5); ctx.stroke(); ctx.strokeStyle = '#d64545'; ctx.lineWidth = .04; rr(c.x0, c.y0, c.x1 - c.x0, c.y1 - c.y0, .5); ctx.stroke(); }
+  ctx.strokeStyle = '#c0392b'; ctx.lineWidth = .05; ctx.setLineDash([.12, .12]); rr(X + .05, Y + .05, w - .1, h - .1, .14); ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineDashOffset = .12; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+  for (const t of P.trees) ctx.drawImage(treeSprite(t.v), t.x - .3, t.y - .38, .6, .6);
+}
+function coasterPos(c, f){
+  const W2 = c.x1 - c.x0, H2 = c.y1 - c.y0, per = 2 * (W2 + H2); let d = ((f % 1) + 1) % 1 * per;
+  if (d < W2) return [c.x0 + d, c.y0, 0]; d -= W2; if (d < H2) return [c.x1, c.y0 + d, Math.PI / 2]; d -= H2; if (d < W2) return [c.x1 - d, c.y1, Math.PI]; d -= W2; return [c.x0, c.y1 - d, -Math.PI / 2];
+}
+function drawAmuseRides(b, now){
+  const P = amuPlan(b), T = now / 1000;
+  const cols = ['#e4524a', '#f2b134', '#2e86c1', '#3d9a5b', '#8e44ad', '#e67e22'];
+  for (const r of P.rides){
+    const x = r.x, y = r.y, R = r.r;
+    if (r.t === 'ferris'){
+      const rad = R * .95, cy = y - rad * .55, a0 = T / 9 + r.ph;
+      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x + .2, y + R * .45, rad * .9, rad * .25, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#5b6268'; ctx.lineWidth = .05; ctx.beginPath(); ctx.moveTo(x - rad * .45, y + R * .45); ctx.lineTo(x, cy); ctx.lineTo(x + rad * .45, y + R * .45); ctx.stroke();
+      ctx.strokeStyle = 'rgba(80,90,100,.9)'; ctx.lineWidth = .03; ctx.beginPath(); ctx.arc(x, cy, rad, 0, 7); ctx.stroke();
+      ctx.lineWidth = .012; for (let k = 0; k < 12; k++){ const a = a0 + k * Math.PI / 6; ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x + Math.cos(a) * rad, cy + Math.sin(a) * rad); ctx.stroke(); }
+      for (let k = 0; k < 12; k++){ const a = a0 + k * Math.PI / 6, px = x + Math.cos(a) * rad, py = cy + Math.sin(a) * rad; ctx.fillStyle = cols[k % 6]; rr(px - .07, py, .14, .12, .03); ctx.fill(); }
+      ctx.fillStyle = '#3c4248'; ctx.beginPath(); ctx.arc(x, cy, .06, 0, 7); ctx.fill();
+    } else if (r.t === 'carousel'){
+      const rad = R * .7, a = T * .8;
+      ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(x + .1, y + .1, rad, rad * .45, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#f4ead2'; ctx.beginPath(); ctx.ellipse(x, y, rad, rad * .45, 0, 0, 7); ctx.fill();
+      for (let k = 0; k < 8; k++){ const aa = a + k * Math.PI / 4; ctx.fillStyle = cols[k % 6]; ctx.beginPath(); ctx.arc(x + Math.cos(aa) * rad * .75, y + Math.sin(aa) * rad * .33 - .12, .05, 0, 7); ctx.fill(); }
+      ctx.fillStyle = '#c9a24a'; ctx.fillRect(x - .02, y - .55, .04, .5);
+      for (let k = 0; k < 8; k++){ ctx.fillStyle = k % 2 ? '#e4524a' : '#fff4e0'; ctx.beginPath(); ctx.moveTo(x, y - .75); ctx.lineTo(x + Math.cos(k * Math.PI / 4) * rad, y - .45 + Math.sin(k * Math.PI / 4) * rad * .3); ctx.lineTo(x + Math.cos((k + 1) * Math.PI / 4) * rad, y - .45 + Math.sin((k + 1) * Math.PI / 4) * rad * .3); ctx.fill(); }
+      ctx.fillStyle = '#f2b134'; ctx.beginPath(); ctx.arc(x, y - .77, .05, 0, 7); ctx.fill();
+    } else if (r.t === 'swing'){
+      const top = y - 1.1, a = T * 1.6, rr2 = R * .75;
+      ctx.strokeStyle = '#6c7378'; ctx.lineWidth = .05; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, top); ctx.stroke();
+      ctx.fillStyle = '#2e86c1'; ctx.beginPath(); ctx.ellipse(x, top, .3, .1, 0, 0, 7); ctx.fill();
+      for (let k = 0; k < 10; k++){ const aa = a + k * Math.PI / 5, cx = x + Math.cos(aa) * rr2, cy = top + .45 + Math.sin(aa) * rr2 * .35; ctx.strokeStyle = 'rgba(60,60,60,.6)'; ctx.lineWidth = .008; ctx.beginPath(); ctx.moveTo(x + Math.cos(aa) * .28, top + Math.sin(aa) * .09); ctx.lineTo(cx, cy); ctx.stroke(); ctx.fillStyle = cols[k % 6]; ctx.fillRect(cx - .03, cy, .06, .04); }
+    } else if (r.t === 'drop'){
+      const ht = 1.9, ph = (Math.sin(T * .9 + r.ph) + 1) / 2;
+      ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(x, y - .03, .9, .06);
+      ctx.fillStyle = '#d6dbe0'; ctx.fillRect(x - .06, y - ht, .12, ht); ctx.fillStyle = '#e4524a'; for (let k = 0; k < 6; k++) ctx.fillRect(x - .06, y - ht + k * .32, .12, .05);
+      const cy = y - .25 - ph * (ht - .5); ctx.fillStyle = '#f2b134'; rr(x - .18, cy - .1, .36, .14, .04); ctx.fill();
+    } else if (r.t === 'bumper'){
+      for (let k = 0; k < 5; k++){ const aa = T * (.6 + k * .13) + k * 1.7, cx = x + Math.cos(aa) * R * .5, cy = y + Math.sin(aa * 1.3) * R * .3; ctx.fillStyle = cols[k % 6]; rr(cx - .07, cy - .05, .14, .1, .03); ctx.fill(); }
+      ctx.strokeStyle = '#8a8f96'; ctx.lineWidth = .025; for (const dx of [-.7, .7]) for (const dy of [-.5, .5]){ ctx.beginPath(); ctx.moveTo(x + dx * R, y + dy * R + .05); ctx.lineTo(x + dx * R, y + dy * R - .5); ctx.stroke(); }
+      ctx.fillStyle = 'rgba(46,134,193,.55)'; rr(x - R * .78, y - R * .55 - .5, R * 1.56, R * 1.1, .08); ctx.fill();
+    } else if (r.t === 'flume'){
+      const aa = T * .5 + r.ph, cx = x + Math.cos(aa) * R * .7, cy = y + Math.sin(aa) * R * .45;
+      ctx.fillStyle = '#8a6a48'; rr(cx - .1, cy - .06, .2, .1, .04); ctx.fill();
+      ctx.strokeStyle = '#7a4a2a'; ctx.lineWidth = .04; ctx.beginPath(); ctx.moveTo(x - R * .3, y - R * .45); ctx.lineTo(x - R * .3, y - R * .45 - .6); ctx.lineTo(x + R * .2, y - R * .45 - .1); ctx.stroke();
+    } else if (r.t === 'teacups'){
+      for (let k = 0; k < 4; k++){ const aa = T * .7 + k * Math.PI / 2, cx = x + Math.cos(aa) * R * .4, cy = y + Math.sin(aa) * R * .25; ctx.fillStyle = cols[(k + 2) % 6]; ctx.beginPath(); ctx.ellipse(cx, cy - .06, .12, .07, 0, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(cx, cy - .09, .08, .04, 0, 0, 7); ctx.fill(); }
+    } else if (r.t === 'pirate'){
+      const sw = Math.sin(T * 1.2 + r.ph) * .7;
+      ctx.strokeStyle = '#5c636a'; ctx.lineWidth = .05; ctx.beginPath(); ctx.moveTo(x - .35, y + .1); ctx.lineTo(x, y - 1); ctx.lineTo(x + .35, y + .1); ctx.stroke();
+      ctx.save(); ctx.translate(x, y - 1); ctx.rotate(sw); ctx.strokeStyle = '#5c636a'; ctx.lineWidth = .03; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, .75); ctx.stroke();
+      ctx.fillStyle = '#8a5a3a'; ctx.beginPath(); ctx.moveTo(-.4, .7); ctx.quadraticCurveTo(0, 1, .4, .7); ctx.lineTo(.3, .78); ctx.lineTo(-.3, .78); ctx.fill(); ctx.restore();
+    } else if (r.t === 'kiosk' || r.t === 'coasterSt'){
+      const n = r.t === 'coasterSt' ? 1 : 3;
+      for (let k = 0; k < n; k++){ const kx = x - (n - 1) * .3 + k * .6, ky = y; ctx.fillStyle = '#f7f3ea'; ctx.fillRect(kx - .17, ky - .25, .34, .25); for (let s2 = 0; s2 < 4; s2++){ ctx.fillStyle = s2 % 2 ? '#fff' : cols[(k + s2) % 6]; ctx.fillRect(kx - .2 + s2 * .1, ky - .34, .1, .1); } }
+      if (r.t === 'coasterSt'){ ctx.fillStyle = '#d64545'; ctx.fillRect(x - .4, y - .5, .8, .08); }
+    }
+  }
+  if (P.coaster){
+    const f = (now / 14000) % 1;
+    for (let k = 0; k < 5; k++){ const [cx, cy, a] = coasterPos(P.coaster, f - k * .012); ctx.save(); ctx.translate(cx, cy - .12); ctx.rotate(a); ctx.fillStyle = k ? '#2e86c1' : '#e4524a'; rr(-.08, -.06, .16, .12, .03); ctx.fill(); ctx.restore(); }
+  }
+  const g = P.gate; ctx.save(); ctx.translate(g.x, g.y); if (g.sx) ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = '#c0392b'; ctx.fillRect(-.42, -.6, .08, .6); ctx.fillRect(.34, -.6, .08, .6); ctx.fillStyle = '#f2b134'; rr(-.5, -.78, 1, .22, .06); ctx.fill(); ctx.fillStyle = '#c0392b'; ctx.font = 'bold .13px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('ЛУНА-ПАРК', 0, -.63); ctx.restore();
 }
 function drawBigPark(b, now){
   const P = parkPlan(b), {X, Y, w, h} = P;
@@ -4233,7 +4475,7 @@ function drawParkedCars(b, list, now){
 }
 /* ---------- driveways & residents' parking ---------- */
 const CAR_DRIVE = ['taxipark','house','supermarket','zhk','parkade','yard','depot','factory','fire','police','gas','port','landfill','powerplant','waterworks','hospital','stadium','block'];
-const NO_DRIVE = ['park','square','bigpark','beach','cemetery','monument','site','void','ferris','airport','boatst','watertower'];
+const NO_DRIVE = ['park','square','bigpark','beach','cemetery','monument','site','void','ferris','amuse','airport','boatst','watertower'];
 function gateSpots(b){
   const X = b.x, Y = b.y, fw = fwOf(b), fh = fhOf(b), out = [];
   if (b.type === 'parkade' || (b.shape || 'Г') === 'O'){ for (let k = 0; k < fw; k++) out.push([X + k + .5, Y + fh - .1]); return out; }
@@ -4539,6 +4781,7 @@ function drawPark(b, now){
 }
 function drawBuilding(b, now){
   if (b.type === 'park') return drawPark(b, now);
+  if (b.type === 'amuse') return drawAmuseRides(b, now);
   if (b.type === 'beach') return drawBeach(b, now);
   if (b.type === 'site') return drawSite(b, now);
   if (b.type === 'void') return;
@@ -4554,7 +4797,7 @@ function drawBuilding(b, now){
   }
   if (b.type === 'powerplant'){
     const F = fp(b);
-    for (const [tx, ty] of [[F[1] - .42, F[2] + .62 - .95], [F[1] - .42, F[3] - .2 - .95]]) for (let k = 0; k < 4; k++){
+    for (const [tx, ty] of plantTowers(b).map(([x, y]) => [x, y - .95])) for (let k = 0; k < 4; k++){
       const ph = ((now / 3000 + k / 4 + tx) % 1);
       ctx.fillStyle = 'rgba(245,245,245,' + (0.55 * (1 - ph)).toFixed(3) + ')';
       ctx.beginPath(); ctx.arc(tx + ph * .5 + Math.sin(k + now / 900) * .05, ty - ph * 1.2, .2 + ph * .3, 0, 7); ctx.fill();
@@ -4684,6 +4927,7 @@ function drawGround0(x, y, i, now){
       if (['zhk','supermarket','block','thouse','site'].includes(type)) return;
       if (x !== bb.x || y !== bb.y) return;
       if (type === 'bigpark') return drawBigPark(bb, now);
+      if (type === 'amuse') return drawAmuseGround(bb, now);
       if (type === 'airport') return drawAirportGround(bb, now);
       if (type === 'landfill') return drawLandfill(bb, now);
       if (type === 'cemetery') return drawCemetery(bb, now);
@@ -4995,8 +5239,40 @@ function services(){
     }
   }
 }
+/* cars keep their distance: nobody drives into the car ahead in the same lane */
+let CAR_GRID = new Map(), CAR_ID = 0, CAR_ST = -1e9;
+function buildCarGrid(){
+  CAR_GRID = new Map(); CAR_ST = S.t;
+  const add = (o, x, y, a, L) => { if (x == null || a == null) return; const k = ((x * .5) | 0) * 1000 + ((y * .5) | 0); let l = CAR_GRID.get(k); if (!l) CAR_GRID.set(k, l = []); l.push({o, x, y, a, L}); };
+  for (const v of traffic) add(v, v._x, v._y, v._a, v.kind === 'bus' ? .82 : v.kind === 'truck' || v.kind === 'firetruck' || v.kind === 'tanker' ? .6 : .42);
+  for (const p of S.people) if (p.st === 'walk' && p.car && p._v) add(p, p._x, p._y, p._a, .42);
+}
+function carBlocked(o){
+  if (o.siren || o._x == null || o._a == null || Math.abs(S.t - CAR_ST) > 3) return false;
+  const now = performance.now(), ca = Math.cos(o._a), sa = Math.sin(o._a), myL = o.kind === 'bus' ? .82 : o.kind === 'truck' || o.kind === 'firetruck' || o.kind === 'tanker' ? .6 : .42;
+  const gx = (o._x * .5) | 0, gy = (o._y * .5) | 0; let hit = false;
+  for (let dx = -1; dx <= 1 && !hit; dx++) for (let dy = -1; dy <= 1 && !hit; dy++){
+    const l = CAR_GRID.get((gx + dx) * 1000 + gy + dy); if (!l) continue;
+    for (const q of l){
+      if (q.o === o) continue;
+      const ex = q.x - o._x, ey = q.y - o._y, ahead = ex * ca + ey * sa, lat = -ex * sa + ey * ca;
+      let da = Math.abs(q.a - o._a) % (Math.PI * 2); if (da > Math.PI) da = Math.PI * 2 - da;
+      if (da > 2.4) continue;
+      if (Math.abs(ahead) <= .02 && Math.abs(lat) < .15){ if (!o._cid) o._cid = ++CAR_ID; if (!q.o._cid) q.o._cid = ++CAR_ID; if (o._cid > q.o._cid){ hit = true; break; } continue; }
+      if (ahead <= .02 || ahead > (myL + q.L) / 2 + .12) continue;
+      if (Math.abs(lat) > (da > 1.1 ? .26 : .15)) continue;
+      hit = true; break;
+    }
+  }
+  if (!hit){ o._bs = 0; return false; }
+  if (!o._bs) o._bs = now;
+  if (now - o._bs > 3000){ o._bs = now + 1200; return false; }
+  return now >= o._bs;
+}
+window.carBlocked = carBlocked;
 function updateTraffic(dt){
   if (!dt) return;
+  buildCarGrid();
   const h = hourF(); let nb = 0, nt = 0;
   for (const v of traffic) if (v.kind === 'bus') nb++; else if (v.kind === 'truck' || v.kind === 'van') nt++;
   let biz = 0; for (const b of S.buildings) if (b.type === 'shop' || b.type === 'cafe' || b.type === 'factory' || b.type === 'office') biz++;
@@ -5015,6 +5291,7 @@ function updateTraffic(dt){
   for (const v of traffic.slice()){
     if (v.wait > 0){ v.wait -= dt; continue; }
     if (R() < dt * .03) v.o = !v.o;
+    if (!v.parked && carBlocked(v)) continue;
     if (!v.siren && redAhead(v, (vv, k) => tc(k), v.sp * VS * dt)) continue;
     if (v.parked){
       const b = S.buildings[v.target];
@@ -5243,7 +5520,7 @@ function personPos(p, now){
   }
   if (p.st === 'in' && !p.sleep){
     const b = S.buildings[p.loc];
-    if (b && ['park','beach','square','bigpark','monument','boatst'].includes(b.type)){
+    if (b && ['park','beach','square','bigpark','monument','boatst','amuse'].includes(b.type)){
       const k = now / 4000 + p.id * 1.7, fw = fwOf(b), fh = fhOf(b);
       if (b.type === 'boatst'){ const wt = [[1,0],[-1,0],[0,1],[0,-1]].find(([dx, dy]) => inb(b.x + dx, b.y + dy) && S.terrain[idx(b.x + dx, b.y + dy)] === 1); if (wt) return [b.x + .5 + wt[0] * (1 + Math.sin(k) * .4) + Math.cos(k * 1.3) * .2, b.y + .5 + wt[1] * (1 + Math.sin(k) * .4) + Math.sin(k * .9) * .2]; }
       if (b.type === 'bigpark'){
@@ -5272,7 +5549,7 @@ function draw(now){
   ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(groundR.x0 - .15, groundR.y0 - .15, groundR.x1 - groundR.x0 + .3, groundR.y1 - groundR.y0 + .3);
   ctx.imageSmoothingEnabled = true; ctx.drawImage(groundCv, groundR.x0, groundR.y0, groundR.x1 - groundR.x0, groundR.y1 - groundR.y0);
   curPR = Math.max(.1, 2.4 / z);
-  for (const b of S.buildings) if (b.type === 'bigpark' && (b.y < vy0 - 3 || b.x < vx0 - 6) && b.x + fwOf(b) >= vx0 && b.y + fhOf(b) >= vy0 && b.x <= vx1 && b.y <= vy1) drawBigPark(b, now);
+  for (const b of S.buildings) if ((b.type === 'bigpark' || b.type === 'amuse') && (b.y < vy0 - 3 || b.x < vx0 - 6) && b.x + fwOf(b) >= vx0 && b.y + fhOf(b) >= vy0 && b.x <= vx1 && b.y <= vy1) (b.type === "amuse" ? drawAmuseGround : drawBigPark)(b, now);
   for (let y = Math.max(0, vy0 - 3); y <= vy1; y++) for (let x = Math.max(0, vx0 - 6); x <= vx1; x++) drawGround(x, y, idx(x, y), now);
   drawAvenues(vx0, vy0, vx1, vy1);
   drawBigCurves(vx0, vy0, vx1, vy1);
@@ -5312,7 +5589,7 @@ function draw(now){
       if (S.terrain[i] === 2 && !S.road[i] && S.bld[i] < 0) drawTree(x, y, i);
       const b = S.bld[i]; if (b >= 0){
         const bb = S.buildings[b], T = TYPES[bb.type];
-        if (fwOf(bb) > 1 || fhOf(bb) > 1){ if (bb.type === 'bigpark' || bb.type === 'cemetery' || drawnMulti.has(b) || y !== bb.y + fhOf(bb) - 1) continue; drawnMulti.add(b); }
+        if (fwOf(bb) > 1 || fhOf(bb) > 1){ if (bb.type === 'bigpark' || bb.type === 'cemetery' || drawnMulti.has(b) || y !== Math.min(bb.y + fhOf(bb) - 1, vy1 + 4)) continue; drawnMulti.add(b); }
         if (bb.type !== 'square' && bb.type !== 'yard' && bb.type !== 'cemetery' && bb.type !== 'landfill') drawBuilding(bb, now);
       }
     }
@@ -5436,7 +5713,7 @@ const LAYERS = {
 const LAY = {}; for (const k in LAYERS) for (const [id, ic, nm, c] of LAYERS[k]) LAY[id] = {ic, nm, c};
 const COM_T = ['shop', 'cafe', 'office', 'supermarket', 'gas', 'taxipark'], IND_T = ['factory', 'powerplant', 'landfill', 'depot', 'port', 'airport', 'waterworks'];
 const SVC = {police:{t:['police'], r:11, veh:'police'}, fire:{t:['fire'], r:11, veh:'firetruck'}, hosp:{t:['hospital'], r:15}};
-const UTIL = {power:{src:['powerplant'], cap:b => b.type === 'powerplant' ? 450 * (1 + (b.lvl || 0) * .6) : 0},
+const UTIL = {power:{src:['powerplant'], cap:b => b.type === 'powerplant' ? plantCap(b) : 0},
               water:{src:['waterworks', 'watertower'], cap:b => b.type === 'waterworks' ? 400 * (1 + (b.lvl || 0) * .6) : b.type === 'watertower' ? 150 : 0}};
 const NO_UTIL = ['park', 'square', 'bigpark', 'beach', 'cemetery', 'yard', 'monument', 'void', 'site'];
 let overlay = null, layCat = null, ovCache = null, lastLegend = '';
