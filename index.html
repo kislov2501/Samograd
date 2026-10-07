@@ -257,6 +257,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
           <button data-cat="zone" aria-expanded="false"><span>🏙</span>Зоны</button>
           <button data-cat="svc" aria-expanded="false"><span>🚨</span>Службы</button>
           <button data-cat="util" aria-expanded="false"><span>🔧</span>Коммунальные</button>
+          <button data-cat="trans" aria-expanded="false"><span>🚦</span>Транспорт</button>
         </div>
       </div>
       <button class="lay-btn" id="layBtn" aria-expanded="false" aria-label="Слои карты" title="Слои карты: зоны, службы, коммунальные сети">
@@ -392,6 +393,7 @@ const TYPES = {
   port:    {n:'Речной порт', cap:0,  jobs:10, cost:1500, h:.45, t:['докер','крановщик','капитан']},
   beach:   {n:'Пляж',        cap:0,  jobs:2,  cost:200,  h:0,   t:['спасатель']},
   depot:   {n:'Автобусный парк', cap:0, jobs:10, cost:1200, h:.45, fw:2, fh:1, t:['водитель автобуса','механик','диспетчер']},
+  taxipark:{n:'Таксопарк', cap:0, jobs:8, cost:1000, h:.4, fw:2, fh:1, t:['таксист','диспетчер такси','автомеханик']},
   airport: {n:'Аэропорт',    cap:0,  jobs:30, cost:8000, h:.55, fw:6, fh:3, t:['пилот','бортпроводник','авиадиспетчер','техник']},
   boatst:  {n:'Лодочная станция', cap:0, jobs:3, cost:400, h:.3, t:['лодочник','инструктор по гребле']},
   square:  {n:'Сквер',       cap:0,  jobs:0,  cost:150,  h:0},
@@ -507,6 +509,7 @@ function makeName(b){
     case 'port': return countType('port') ? 'Грузовой причал' : 'Речной порт';
     case 'beach': return pick(['Городской пляж','Пляж «Солнечный»','Пляж «Лагуна»','Пляж «Золотой берег»']);
     case 'depot': return 'Автобусный парк №' + (countType('depot') + 1);
+    case 'taxipark': return 'Таксопарк «' + pick(['Шашечки','Жёлтое такси','Городское такси','Попутчик','Дилижанс']) + '»';
     case 'airport': return 'Аэропорт «' + S.name + '»';
     case 'boatst': return 'Лодочная станция «' + pick(['Чайка','Волна','Весло','Парус']) + '»';
     case 'square': return pick(['Сквер Ветеранов','Сирeневый сквер','Сквер Учителей','Тихий сквер','Сквер у фонтана','Сквер Строителей','Сквер Влюблённых','Каштановый сквер']).replace('Сирeневый', 'Сиреневый');
@@ -993,8 +996,8 @@ function bestLot(lots, kind){
   }
   return best;
 }
-const BUILD_DAYS = {house:.6, thouse:.9, apt:1.5, tower:2.6, shop:.7, cafe:.7, factory:1.6, office:1.8, park:.5, school:2, hospital:2.4, police:1.3, fire:1.3, port:2, beach:.4, depot:1.5, airport:4, boatst:.6, square:.4, bigpark:1.4, monument:.8, church:3, museum:2.2, theater:2.4, ferris:1.6, stadium:3, tvtower:2.6, powerplant:3, waterworks:2, watertower:1, landfill:1.2, gas:.8, kinder:1.3, cemetery:.8, yard:.3};
-const BLBL = {powerplant:'электростанция', waterworks:'водоканал', watertower:'водонапорная башня', landfill:'мусорный полигон', gas:'заправка', kinder:'детский сад', cemetery:'кладбище', yard:'двор', depot:'автобусный парк', airport:'аэропорт', boatst:'лодочная станция', square:'сквер', bigpark:'большой парк', monument:'памятник', church:'собор', museum:'музей', theater:'театр', ferris:'колесо обозрения', stadium:'стадион', tvtower:'телебашня', house:'жилой дом', apt:'многоэтажка', tower:'высотка', shop:'магазин', cafe:'кафе', factory:'предприятие', office:'офис', park:'парк', school:'школа', hospital:'больница', police:'полицейский участок', fire:'пожарная часть', port:'порт', beach:'пляж'};
+const BUILD_DAYS = {taxipark:1.2, house:.6, thouse:.9, apt:1.5, tower:2.6, shop:.7, cafe:.7, factory:1.6, office:1.8, park:.5, school:2, hospital:2.4, police:1.3, fire:1.3, port:2, beach:.4, depot:1.5, airport:4, boatst:.6, square:.4, bigpark:1.4, monument:.8, church:3, museum:2.2, theater:2.4, ferris:1.6, stadium:3, tvtower:2.6, powerplant:3, waterworks:2, watertower:1, landfill:1.2, gas:.8, kinder:1.3, cemetery:.8, yard:.3};
+const BLBL = {taxipark:'таксопарк', powerplant:'электростанция', waterworks:'водоканал', watertower:'водонапорная башня', landfill:'мусорный полигон', gas:'заправка', kinder:'детский сад', cemetery:'кладбище', yard:'двор', depot:'автобусный парк', airport:'аэропорт', boatst:'лодочная станция', square:'сквер', bigpark:'большой парк', monument:'памятник', church:'собор', museum:'музей', theater:'театр', ferris:'колесо обозрения', stadium:'стадион', tvtower:'телебашня', house:'жилой дом', apt:'многоэтажка', tower:'высотка', shop:'магазин', cafe:'кафе', factory:'предприятие', office:'офис', park:'парк', school:'школа', hospital:'больница', police:'полицейский участок', fire:'пожарная часть', port:'порт', beach:'пляж'};
 function build(type, l, o){
   if (!l || S.money < TYPES[type].cost) return false;
   o = o || {};
@@ -1162,7 +1165,7 @@ function upgrade(st){
   if (s) addFx(b.x + .5, b.y - .5, '🏗');
   return !!s;
 }
-const PLAN_L = {parking:'Парковки у домов', powerplant:'Электростанция', waterworks:'Водоканал', watertower:'Водонапорная башня', landfill:'Мусорный полигон', gas:'Заправки', kinder:'Детские сады', cemetery:'Кладбище', yard:'Дворы и площадки', depot:'Автобусный парк', airport:'Аэропорт', boatst:'Лодочная станция', square:'Скверы', bigpark:'Большой парк', land:'Достопримечательность', avenue:'Проспекты', road:'Новые улицы', res:'Жильё', job:'Рабочие места', com:'Магазины и кафе', park:'Парки', school:'Школа', hosp:'Больница', up:'Многоэтажки', police:'Полиция', fire:'Пожарная часть', port:'Речной порт', beach:'Пляж'};
+const PLAN_L = {taxipark:'Таксопарк', parking:'Парковки у домов', powerplant:'Электростанция', waterworks:'Водоканал', watertower:'Водонапорная башня', landfill:'Мусорный полигон', gas:'Заправки', kinder:'Детские сады', cemetery:'Кладбище', yard:'Дворы и площадки', depot:'Автобусный парк', airport:'Аэропорт', boatst:'Лодочная станция', square:'Скверы', bigpark:'Большой парк', land:'Достопримечательность', avenue:'Проспекты', road:'Новые улицы', res:'Жильё', job:'Рабочие места', com:'Магазины и кафе', park:'Парки', school:'Школа', hosp:'Больница', up:'Многоэтажки', police:'Полиция', fire:'Пожарная часть', port:'Речной порт', beach:'Пляж'};
 function mayor(){
   const st = stats(), lots = findLots(), vac = st.hc + st.hcP - st.pop, freeJ = (st.jc - st.jcS + st.jcP) - (st.ju - st.juS);
   const roadJobs = S.buildings.reduce((n, b) => n + (b.type === 'site' && b.site.grow ? 1 : 0), 0);
@@ -1182,6 +1185,7 @@ function mayor(){
     port: st.pop >= 90 && (st.counts.port || 0) < (st.pop >= 300 ? 2 : 1) ? 2 : 0,
     beach: st.pop >= 30 && (st.counts.beach || 0) < 1 + Math.floor(st.pop / 250) ? 1.7 : 0,
     depot: st.pop >= 80 && (st.counts.depot || 0) < (st.pop >= 600 ? 2 : 1) ? 2.4 : 0,
+    taxipark: st.pop >= 100 && (st.counts.taxipark || 0) < (st.pop >= 900 ? 2 : 1) ? 2.2 : 0,
     airport: st.pop >= 450 && !st.counts.airport ? 2.4 : 0,
     boatst: st.pop >= 60 && (st.counts.boatst || 0) < 1 + Math.floor(st.pop / 450) ? 1.6 : 0,
     square: st.pop >= 40 && (st.counts.square || 0) < st.pop / 45 ? 1.5 : 0,
@@ -1215,6 +1219,7 @@ function mayor(){
       case 'port': ok = build('port', shoreLot(true)) || growRoad(true); break;
       case 'beach': ok = build('beach', shoreLot(false)) || growRoad(true); break;
       case 'depot': ok = build('depot', findArea(2, 1, 'mid', 'depot')); break;
+      case 'taxipark': ok = build('taxipark', findArea(2, 1, 'mid', 'taxipark')); break;
       case 'airport': ok = build('airport', findArea(6, 3, 'far', 'airport')); break;
       case 'boatst': ok = build('boatst', shoreLot(false)); break;
       case 'square': ok = build('square', bestLot(lots, 'civic')); break;
@@ -2757,7 +2762,7 @@ function fitZoom(){ const r = mapEl.getBoundingClientRect(); return clamp(Math.m
 const COL = {
   grass:['#9cc47a','#97bf75','#a1c87f'], water:'#4f8fbf', waterHi:'#7db3da', road:'#5d646c', curb:'#a6abb0', dash:'#efe6c6',
   deck:'#8b765f', rail:'#5e4c3b', tree:'#3f7c47', treeHi:'#5d9f58', trunk:'#2c4a2e',
-  lot:{house:'#a9cd88', apt:'#c8c3b5', tower:'#c3c4c2', shop:'#d4cdbc', cafe:'#d8ccb4', factory:'#b9b1a4', office:'#c4c8cc', park:'#86c26c', school:'#cdb89e', hospital:'#dfe4e6', hall:'#ddd3bd', police:'#cfd5dc', fire:'#d6c9c0', port:'#bdb6a6', beach:'#e3d9ad', powerplant:'#b5b8b2', waterworks:'#c3cbc6', watertower:'#b8c4ab', gas:'#b9bcbf', kinder:'#cfe3b8', depot:'#a9b0b6', boatst:'#e3d9ad', monument:'#cfc6b0', church:'#d9d2c1', museum:'#d6cdb9', theater:'#d9cdb9', ferris:'#9fcf86', stadium:'#9aa3ab', tvtower:'#bcb6a6'},
+  lot:{taxipark:'#b9bcbf', house:'#a9cd88', apt:'#c8c3b5', tower:'#c3c4c2', shop:'#d4cdbc', cafe:'#d8ccb4', factory:'#b9b1a4', office:'#c4c8cc', park:'#86c26c', school:'#cdb89e', hospital:'#dfe4e6', hall:'#ddd3bd', police:'#cfd5dc', fire:'#d6c9c0', port:'#bdb6a6', beach:'#e3d9ad', powerplant:'#b5b8b2', waterworks:'#c3cbc6', watertower:'#b8c4ab', gas:'#b9bcbf', kinder:'#cfe3b8', depot:'#a9b0b6', boatst:'#e3d9ad', monument:'#cfc6b0', church:'#d9d2c1', museum:'#d6cdb9', theater:'#d9cdb9', ferris:'#9fcf86', stadium:'#9aa3ab', tvtower:'#bcb6a6'},
 };
 const ROOFS = ['#b5523b','#8f4a3a','#4e6a8a','#6b7b3a','#a0683a','#7a5a7a'];
 const WALLS = ['#efe2c6','#e6d3b3','#dfe3e6','#f1dcc8'];
@@ -3154,6 +3159,18 @@ function renderBuilding(b, h){
       ctx.fillStyle = vg(gt - .02, gt + .08, '#f4bf4f', '#c98316'); ctx.fillRect(gx0 - .04, gt - .02, gx1 - gx0 + .08, .09);
       ctx.fillStyle = '#4a4f55'; ctx.fillRect(gx0 + .25, gt + .07, .12, .08);
       ctx.strokeStyle = '#4a4f55'; ctx.lineWidth = .01; ctx.beginPath(); ctx.moveTo(gx0 + .31, gt + .15); ctx.lineTo(gx0 + .31, gt + .42); ctx.stroke();
+      break; }
+    case 'taxipark': {
+      const gx1 = x0 + w * .55;
+      facade(x0, gx1, y1, h, '#f1e3b0');
+      for (let k = 0; k < 2; k++){ const gx = x0 + .07 + k * (gx1 - x0 - .1) / 2, gw = (gx1 - x0 - .1) / 2 - .06, gh = h * .66;
+        ctx.fillStyle = vg(y1 - gh, y1, '#7d8a96', '#4d5762'); ctx.fillRect(gx, y1 - gh, gw, gh);
+        ctx.fillStyle = 'rgba(255,255,255,.25)'; for (let r = 1; r < 4; r++) ctx.fillRect(gx, y1 - gh + r * gh / 4, gw, .006); }
+      for (let k = 0; k < 12; k++){ ctx.fillStyle = k % 2 ? '#222' : '#f5c518'; ctx.fillRect(x0 + k * (gx1 - x0) / 12, top + .02, (gx1 - x0) / 12, .05); }
+      flatRoof(x0 - .015, ry0 - .015, gx1 + .015, ry1 + .01, '#a7a29a', null); eaveShade(x0, gx1, ry1 + .01);
+      ctx.fillStyle = '#f5c518'; rr(x0 + .12, ry0 + .12, gx1 - x0 - .24, .2, .04); ctx.fill(); ctx.fillStyle = '#222'; ctx.font = 'bold .14px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('TAXI', (x0 + gx1) / 2, ry0 + .27);
+      ctx.fillStyle = '#8e959c'; ctx.fillRect(gx1 + .04, ry0, x1 - gx1 - .04, y1 - ry0);
+      ctx.strokeStyle = '#f4f4f2'; ctx.lineWidth = .015; for (let k = 0; k <= 3; k++){ const lx = gx1 + .06 + k * (x1 - gx1 - .1) / 3; ctx.beginPath(); ctx.moveTo(lx, ry0 + .05); ctx.lineTo(lx, ry0 + .45); ctx.stroke(); }
       break; }
     case 'depot': {
       facade(x0, x1, y1, h, '#d7dbe0');
@@ -4161,7 +4178,7 @@ function drawParkedCars(b, list, now){
   if (b.type === 'supermarket'){ for (let k = 0; k < Math.min(n, 4 + (b.id % 4)); k++){ const kk = (k * 5 + 3) % n; if (used.has(kk)) continue; const [x, y, a] = slots[kk]; const hv = hash(b.id * 31 + k); drawVehicle(x, y, a, 'car', CAR_COLS[(hv * 97 | 0) % CAR_COLS.length], false, false, now, CAR_STYLES[(hv * 53 | 0) % CAR_STYLES.length]); } }
 }
 /* ---------- driveways & residents' parking ---------- */
-const CAR_DRIVE = ['house','supermarket','zhk','parkade','yard','depot','factory','fire','police','gas','port','landfill','powerplant','waterworks','hospital','stadium','block'];
+const CAR_DRIVE = ['taxipark','house','supermarket','zhk','parkade','yard','depot','factory','fire','police','gas','port','landfill','powerplant','waterworks','hospital','stadium','block'];
 const NO_DRIVE = ['park','square','bigpark','beach','cemetery','monument','site','void','ferris','airport','boatst','watertower'];
 function gateSpots(b){
   const X = b.x, Y = b.y, fw = fwOf(b), fh = fhOf(b), out = [];
@@ -4492,6 +4509,8 @@ function drawBuilding(b, now){
   if (b.fire > S.t) drawFire(b, now);
   if (b.reno && b.type !== 'yard') drawScaffold(b, now);
   const pk = parkedBy.get(b.id); if (pk || b.type === 'supermarket') drawParkedCars(b, pk || [], now);
+  if (b.type === 'taxipark'){ let out = 0; for (const v of traffic) if (v.kind === 'taxi' && v.base === b.id) out++; const n = Math.max(0, 3 - out); const F = fp(b), gx1 = b.x + fwOf(b) * .55;
+    for (let k = 0; k < n; k++) drawVehicle(gx1 + .2 + k * (b.x + fwOf(b) - gx1 - .1) / 3, F[2] + .3, Math.PI / 2, 'taxi', '#f5c518', false, false, now); }
   if (b.type === 'zhk' || b.type === 'parkade'){
     const dv = driveOf(b);
     if (dv && dv.gx != null){
@@ -4847,8 +4866,10 @@ function stopCand(i){
 }
 let stopKey = -1, stopS = null, stopSet = new Set();
 function stopTiles(){
-  const key = roadsVer * 4096 + (S.avN || 0) * 64 + (S.works ? S.works.length : 0);
+  const hasDep = S.buildings.some(b => b.type === 'depot');
+  const key = (roadsVer * 4096 + (S.avN || 0) * 64 + (S.works ? S.works.length : 0)) * 2 + (hasDep ? 1 : 0);
   if (stopS === S && stopKey === key) return stopSet;
+  if (!hasDep){ stopKey = key; stopS = S; stopSet = new Set(); return stopSet; }
   const prev = stopS === S ? stopSet : new Set();
   stopKey = key; stopS = S; stopSet = new Set();
   const cand = [];
@@ -4876,7 +4897,8 @@ function spawnTruck(){
 function spawnBus(){
   const rl = roads(); if (rl.length < 10) return;
   const dp = S.buildings.filter(x => x.type === 'depot'), de = dp.length ? entry(pick(dp)) : -1;
-  const a = de >= 0 ? de : pick(rl); let b = pick(rl);
+  if (de < 0) return;
+  const a = de; let b = pick(rl);
   for (let k = 0; k < 6 && Math.hypot(a % W - b % W, (a / W | 0) - (b / W | 0)) < 10; k++) b = pick(rl);
   const path = roadPath(a, b); if (!path) return;
   traffic.push({kind:'bus', path, pi:0, prog:0, sp:.7, col:'#f2b134', onTile:busOnTile});
@@ -4924,11 +4946,14 @@ function updateTraffic(dt){
   const RF = REAL ? 12 : 1, VS = REAL ? 17 : 1;
   updatePlanes();
   if (nt < wantT && R() < dt * .06 * RF) spawnTruck();
-  const wantB = (S.people.length >= 220 ? 3 : S.people.length >= 120 ? 2 : S.people.length >= 50 ? 1 : 0) + countType('depot') * 2 + Math.floor(S.people.length / 300);
+  const nDep = countType('depot'), wantB = nDep ? (S.people.length >= 220 ? 3 : S.people.length >= 120 ? 2 : 1) + nDep * 2 + Math.floor(S.people.length / 300) : 0;
+  if (!nDep) for (const v of traffic.slice()) if (v.kind === 'bus') traffic.splice(traffic.indexOf(v), 1);
   if (nb < wantB && h >= 5.5 && h < 23.5) spawnBus();
   services();
   let nx = 0; for (const v of traffic) if (v.kind === 'taxi') nx++;
-  if (nx < Math.min(8, Math.floor(S.people.length / 70)) && R() < dt * .05 * RF){ const rl = roads(); if (rl.length > 10){ const v = {kind:'taxi', path:[pick(rl), pick(rl)], pi:0, prog:0, sp:1, col:'#f5c518'}; v.path = [v.path[0], v.path[0]]; if (patrol(v)) traffic.push(v); } }
+  const tps = stations('taxipark');
+  if (!tps.length) for (const v of traffic.slice()) if (v.kind === 'taxi') traffic.splice(traffic.indexOf(v), 1);
+  if (tps.length && nx < Math.min(4 + tps.length * 4, Math.floor(S.people.length / 60)) && R() < dt * .05 * RF){ const tp = pick(tps), e = entry(tp); if (e >= 0){ const v = {kind:'taxi', path:[e, e], pi:0, prog:0, sp:1, col:'#f5c518', base:tp.id}; if (patrol(v)) traffic.push(v); } }
   for (const v of traffic.slice()){
     if (v.wait > 0){ v.wait -= dt; continue; }
     if (R() < dt * .03) v.o = !v.o;
@@ -5347,9 +5372,10 @@ const LAYERS = {
   zone:[['res', '🏠', 'Жилая', '94,194,122'], ['com', '🏬', 'Коммерческая', '79,158,232'], ['ind', '🏭', 'Промышленная', '232,168,60']],
   svc:[['police', '🚓', 'Полиция', '96,138,245'], ['fire', '🚒', 'Пожарная', '238,96,74'], ['hosp', '🏥', 'Больница', '92,208,190']],
   util:[['water', '💧', 'Вода', '72,168,246'], ['power', '⚡', 'Электричество', '250,206,64']],
+  trans:[['bus', '🚌', 'Автобусы и депо', '242,150,52'], ['stop', '🚏', 'Остановки', '86,200,120'], ['taxi', '🚕', 'Такси', '245,197,24']],
 };
 const LAY = {}; for (const k in LAYERS) for (const [id, ic, nm, c] of LAYERS[k]) LAY[id] = {ic, nm, c};
-const COM_T = ['shop', 'cafe', 'office', 'supermarket', 'gas'], IND_T = ['factory', 'powerplant', 'landfill', 'depot', 'port', 'airport', 'waterworks'];
+const COM_T = ['shop', 'cafe', 'office', 'supermarket', 'gas', 'taxipark'], IND_T = ['factory', 'powerplant', 'landfill', 'depot', 'port', 'airport', 'waterworks'];
 const SVC = {police:{t:['police'], r:11, veh:'police'}, fire:{t:['fire'], r:11, veh:'firetruck'}, hosp:{t:['hospital'], r:15}};
 const UTIL = {power:{src:['powerplant'], cap:b => b.type === 'powerplant' ? 450 * (1 + (b.lvl || 0) * .6) : 0},
               water:{src:['waterworks', 'watertower'], cap:b => b.type === 'waterworks' ? 400 * (1 + (b.lvl || 0) * .6) : b.type === 'watertower' ? 150 : 0}};
@@ -5416,6 +5442,29 @@ function ovData(){
     if (overlay === 'fire') d.lines.push(['Пожаров за всё время', String(S.fires || 0)]);
     if (overlay === 'police') d.lines.push(['Краж за всё время', String(S.crimes || 0)]);
     d.note = 'Круг — куда машины доезжают быстро (' + sv.r + ' клеток)';
+  } else if (overlay === 'bus' || overlay === 'taxi' || overlay === 'stop'){
+    const dep = live.filter(b => b.type === 'depot'), tp = live.filter(b => b.type === 'taxipark');
+    const bld = t => live.some(b => b.type === 'site' && b.site.next === t);
+    const nb = traffic.filter(v => v.kind === 'bus').length, nt = traffic.filter(v => v.kind === 'taxi').length, stops = [...stopTiles()];
+    if (overlay === 'bus'){
+      d.lines.push(['Автобусных парков', dep.length ? String(dep.length) : bld('depot') ? 'строится' : 'нет', dep.length ? 'good' : 'bad']);
+      d.lines.push(['Автобусов на линии', String(nb)]);
+      d.lines.push(['Остановок', String(stops.length)]);
+      d.note = dep.length ? 'Линии — маршруты автобусов' : 'Пока нет автобусного парка, нет ни автобусов, ни остановок';
+    } else if (overlay === 'taxi'){
+      d.lines.push(['Таксопарков', tp.length ? String(tp.length) : bld('taxipark') ? 'строится' : 'нет', tp.length ? 'good' : 'bad']);
+      d.lines.push(['Такси на линии', String(nt)]);
+      d.note = tp.length ? 'Линии — куда едут такси' : 'Пока нет таксопарка, такси в городе нет';
+    } else {
+      const cov = new Uint8Array(W * H), R4 = 4;
+      for (const i of stops){ const x = i % W, y = (i / W) | 0; for (let yy = Math.max(0, y - R4); yy <= Math.min(H - 1, y + R4); yy++) for (let xx = Math.max(0, x - R4); xx <= Math.min(W - 1, x + R4); xx++) if (Math.hypot(xx - x, yy - y) <= R4) cov[idx(xx, yy)] = 1; }
+      const homes = live.filter(b => TYPES[b.type].res), inC = homes.filter(b => cov[idx(b.x, b.y)]).length, p = pct(inC, homes.length);
+      d.cov = cov;
+      d.lines.push(['Остановок', String(stops.length)]);
+      d.lines.push(['Дома рядом с остановкой', stops.length ? p + '%' : '—', !stops.length ? 'bad' : p >= 80 ? 'good' : p < 60 ? 'bad' : '']);
+      d.note = dep.length ? 'Зелёное — до остановки идти не больше 4 клеток' : 'Остановки появятся, когда построят автобусный парк';
+    }
+    d.stops = stops; d.dep = dep; d.tp = tp;
   } else if (UTIL[overlay]){
     const u = UTIL[overlay], src = live.filter(b => u.src.includes(b.type));
     const cap = src.reduce((a, b) => a + u.cap(b), 0), need = S.people.length;
@@ -5484,6 +5533,21 @@ function drawOverlay(L, vx0, vy0, vx1, vy1, now){
     }
     const vk = SVC[overlay].veh;
     if (vk) for (const v of traffic) if (v.kind === vk && v._x != null){ ctx.strokeStyle = A(1); ctx.lineWidth = .06; ctx.beginPath(); ctx.arc(v._x, v._y, .3 + pulse * .08, 0, 7); ctx.stroke(); }
+  } else if (overlay === 'bus' || overlay === 'taxi' || overlay === 'stop'){
+    const kind = overlay === 'taxi' ? 'taxi' : 'bus';
+    if (overlay === 'stop'){ ctx.fillStyle = A(.22); for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (d.cov[idx(x, y)]) ctx.fillRect(x, y, 1.01, 1.01); }
+    if (overlay !== 'stop') for (const v of traffic) if (v.kind === kind && v.path && v._x != null){
+      ctx.strokeStyle = A(.75); ctx.lineWidth = .09; ctx.setLineDash([.3, .2]); ctx.lineDashOffset = -now / 200; ctx.beginPath(); ctx.moveTo(v._x, v._y);
+      for (let k = v.pi + 1; k < v.path.length; k++){ const t = v.path[k]; ctx.lineTo(t % W + .5, ((t / W) | 0) + .5); } ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = A(1); ctx.lineWidth = .07; ctx.beginPath(); ctx.arc(v._x, v._y, .32 + pulse * .08, 0, 7); ctx.stroke();
+    }
+    if (overlay !== 'taxi') for (const i of d.stops){ const x = i % W + .5, y = ((i / W) | 0) + .5; ctx.fillStyle = overlay === 'stop' ? A(1) : 'rgba(86,200,120,1)'; ctx.beginPath(); ctx.arc(x, y, .2, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = .05; ctx.stroke(); }
+    const base = overlay === 'taxi' ? 'taxipark' : 'depot';
+    for (const b of blds){
+      if (b.type === base){ box(b, A(.5), A(1)); ring(b.x + fwOf(b) / 2, b.y + fhOf(b) / 2, 1.3); badge(b, overlay === 'taxi' ? '🚕' : '🚌'); }
+      else if (b.type === 'site' && b.site.next === base) box(b, A(.25), A(.8));
+      else if (overlay === 'stop' && TYPES[b.type].res && !d.cov[idx(b.x, b.y)]){ ctx.fillStyle = 'rgba(232,80,70,.9)'; ctx.beginPath(); ctx.arc(b.x + .5, b.y + .3 - bH(b) * .5, .14, 0, 7); ctx.fill(); }
+    }
   } else if (UTIL[overlay]){
     ctx.save(); ctx.lineCap = 'round';
     ctx.strokeStyle = A(.35); ctx.lineWidth = .2; ctx.beginPath();
