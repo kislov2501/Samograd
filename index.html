@@ -1,8 +1,3 @@
-<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Самоград</title>
 <script>
 /* ═══ АККАУНТЫ ИГРОКОВ ═══
@@ -253,9 +248,6 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
 }
 @media (prefers-reduced-motion:reduce){.bar i,.hint{transition:none}}
 </style>
-</head>
-<body>
-
 
 <div class="app">
   <main class="map" id="map">
@@ -303,6 +295,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
         <div class="eyebrow">Самоград · наблюдение</div>
         <h1 id="cityName">Город</h1>
         <div class="sub" id="citySub">Основан в день 1</div>
+        <div class="sub" id="cityVer"></div>
       </div>
       <div class="brand-btns"><button class="ghost" id="newCity">Новый город</button><button class="ghost pt" id="panelToggle" aria-expanded="true" title="Свернуть информацию о городе" aria-label="Свернуть информацию о городе"><span class="pt-i">▾</span><span class="pt-t">Свернуть</span></button></div>
     </div>
@@ -318,6 +311,7 @@ details summary{cursor:pointer;color:var(--muted);font-size:13px}
       <div class="stat"><div class="k">Настроение</div><div class="v" id="stMood">0</div><div class="d" id="stMoodD">—</div></div>
       <div class="stat"><div class="k">Работа</div><div class="v" id="stJobs">0/0</div><div class="d" id="stJobsD">—</div></div>
     </div>
+    <details class="card" id="changelog"><summary id="clSum" style="cursor:pointer"></summary><div id="clList" style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--muted,#6b7280)"></div></details>
 
 
     <div>
@@ -1125,7 +1119,7 @@ function findLots(){
   const out = [], L = limB();
   for (let y = L.y0; y < L.y1; y++) for (let x = L.x0; x < L.x1; x++){
     const i = idx(x, y);
-    if (S.road[i] || S.bld[i] >= 0 || S.terrain[i] === 1 || S.terrain[i] === 3 || lineV(x, y) || lineH(x, y)) continue;
+    if (S.road[i] || S.bld[i] >= 0 || S.terrain[i] === 1 || S.terrain[i] >= 3 || lineV(x, y) || lineH(x, y)) continue;
     const adj = S.road[i - 1] || S.road[i + 1] || S.road[i - W] || S.road[i + W];
     if (adj) out.push({x, y, adj:true});
     else if (roadNear(x, y, 2) >= 0) out.push({x, y, adj:false});
@@ -1265,7 +1259,7 @@ function roadRoom(x0, y0, dir, kind){
     const x = x0 + dir[0] * k, y = y0 + dir[1] * k;
     if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1 || !inL(x, y)) break;
     const i = idx(x, y); if (S.road[i]){ ok = k > 0; break; }
-    if (S.bld[i] >= 0 || S.terrain[i] === 1 || waterRoadNear(x, y) || blocky(x, y) || sideRoad(x, y, dir)) break;
+    if (S.bld[i] >= 0 || S.terrain[i] === 1 || isMed(i) || waterRoadNear(x, y) || blocky(x, y) || sideRoad(x, y, dir)) break;
     if (k > 0 && kind === 'line' && !(dir[0] === 0 ? lineV(x, y) : lineH(x, y))) break;
     S.road[i] = 1; tmp.push(i);
     if (k === 1 || (kind === 'link' && (lineV(x, y) || lineH(x, y)))){ ok = true; break; }
@@ -1277,7 +1271,7 @@ function roadRoom(x0, y0, dir, kind){
 function growRoad_(toWater){
   let best = null, bs = -1e9; const wd = toWater ? waterDist() : null, L = limB();
   for (let y = L.y0; y < L.y1; y++) for (let x = L.x0; x < L.x1; x++){
-    const i = idx(x, y); if (S.road[i] || S.bld[i] >= 0) continue;
+    const i = idx(x, y); if (S.road[i] || S.bld[i] >= 0 || isMed(i)) continue;
     let dir = null, kind = 'line', pen = 0;
     const lv = lineV(x, y), lh = lineH(x, y);
     if (lv){ if (S.road[i - W]) dir = [0, 1]; else if (S.road[i + W]) dir = [0, -1]; }
@@ -1314,7 +1308,7 @@ function growRoad_(toWater){
   for (let k = 0; k < len; k++){
     const x = best.x + best.dir[0] * k, y = best.y + best.dir[1] * k;
     if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1 || !inL(x, y)) break;
-    const i = idx(x, y); if (S.bld[i] >= 0 || S.road[i] || S.terrain[i] === 1 || waterRoadNear(x, y)) break;
+    const i = idx(x, y); if (S.bld[i] >= 0 || S.road[i] || S.terrain[i] === 1 || isMed(i) || waterRoadNear(x, y)) break;
     if (k > 0 && best.kind === 'line' && !(best.dir[0] === 0 ? lineV(x, y) : lineH(x, y))) break;
     if (blocky(x, y) || sideRoad(x, y, best.dir)) break;
     if (S.money < 15) break;
@@ -1418,7 +1412,7 @@ function mayor(){
 
 function markShore(){
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){
-    const i = idx(x, y); if (S.terrain[i] === 1 || S.terrain[i] === 3) continue;
+    const i = idx(x, y); if (S.terrain[i] === 1 || S.terrain[i] >= 3) continue;
     let wet = false;
     for (let dy = -1; dy <= 1 && !wet; dy++) for (let dx = -1; dx <= 1; dx++){
       if (inb(x + dx, y + dy) && S.terrain[idx(x + dx, y + dy)] === 1){ wet = true; break; }
@@ -1506,7 +1500,7 @@ function avCorners(){
   const rd = (x, y) => inb(x, y) && S.road[idx(x, y)];
   for (let y = 1; y < H - 2; y++) for (let x = 1; x < W - 2; x++){
     const t = [idx(x, y), idx(x + 1, y), idx(x, y + 1), idx(x + 1, y + 1)];
-    if (!t.every(i => S.road[i] && S.av[i] && S.terrain[i] !== 1)) continue;
+    if (!t.every(i => S.road[i] && S.av[i] && avGap(i) === 1 && S.terrain[i] !== 1)) continue;
     const armH = sx => { const xx = sx < 0 ? x - 1 : x + 2; return inb(xx, y + 1) && [idx(xx, y), idx(xx, y + 1)].every(i => S.road[i] && ax(i) === 'h'); };
     const armV = sy => { const yy = sy < 0 ? y - 1 : y + 2; return inb(x + 1, yy) && [idx(x, yy), idx(x + 1, yy)].every(i => S.road[i] && ax(i) === 'v'); };
     const emptyH = sx => { const xx = sx < 0 ? x - 1 : x + 2; return !rd(xx, y) && !rd(xx, y + 1); };
@@ -1665,7 +1659,7 @@ function findArea(w, h, kind, type){
   let zoneHit = false; const L = limB();
   for (let y = Math.max(2, L.y0 + 1); y < Math.min(H - h - 2, L.y1 - h); y++) for (let x = Math.max(2, L.x0 + 1); x < Math.min(W - w - 2, L.x1 - w); x++){
     let ok = true;
-    for (let dy = 0; dy < h && ok; dy++) for (let dx = 0; dx < w; dx++){ const i = idx(x + dx, y + dy); if (S.road[i] || S.bld[i] >= 0 || S.terrain[i] === 1 || S.terrain[i] === 3){ ok = false; break; } }
+    for (let dy = 0; dy < h && ok; dy++) for (let dx = 0; dx < w; dx++){ const i = idx(x + dx, y + dy); if (S.road[i] || S.bld[i] >= 0 || S.terrain[i] === 1 || S.terrain[i] >= 3){ ok = false; break; } }
     if (!ok) continue;
     let road = false;
     for (let dx = -1; dx <= w && !road; dx++) for (const dy of [-1, h]) if (S.road[idx(x + dx, y + dy)]){ road = true; break; }
@@ -1838,7 +1832,7 @@ function rectFree(x, y, w, h, allow, terr){
   const hit = new Set();
   for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++){
     const cx = x + dx, cy = y + dy; if (cx < 1 || cy < 1 || cx >= W - 1 || cy >= H - 1 || !inL(cx, cy)) return null;
-    const i = idx(cx, cy); if (S.road[i] || (terr !== 'any' && (S.terrain[i] === 1 || (S.terrain[i] === 3 && terr !== 'shore')))) return null;
+    const i = idx(cx, cy); if (S.road[i] || S.terrain[i] === 4 || (terr !== 'any' && (S.terrain[i] === 1 || (S.terrain[i] === 3 && terr !== 'shore')))) return null;
     const bi = S.bld[i]; if (bi < 0) continue;
     const b = S.buildings[bi]; if (!allow.includes(b.type)) return null;
     if (b.x < x || b.y < y || b.x + fwOf(b) > x + w || b.y + fhOf(b) > y + h) return null;
@@ -1853,7 +1847,7 @@ function rectFreeR(x, y, w, h, allow){
     const cx = x + dx, cy = y + dy; if (cx < 1 || cy < 1 || cx >= W - 1 || cy >= H - 1 || !inL(cx, cy)) return null;
     const i = idx(cx, cy);
     if (S.road[i]){ if ((S.av && S.av[i]) || S.terrain[i] === 1) return null; roads.push(i); continue; }
-    if (S.terrain[i] === 1 || S.terrain[i] === 3) return null;
+    if (S.terrain[i] === 1 || S.terrain[i] >= 3) return null;
     const bi = S.bld[i]; if (bi < 0) continue;
     const b = S.buildings[bi]; if (!allow.includes(b.type)) return null;
     if (b.x < x || b.y < y || b.x + fwOf(b) > x + w || b.y + fhOf(b) > y + h) return null;
@@ -2123,7 +2117,7 @@ function renew(){
     ['super', pop >= 260 && (st.counts.supermarket || 0) < pop / 450 ? 2.4 : 0],
     ['parkade', pop >= 380 && (st.counts.parkade || 0) < pop / 500 ? 1 : 0],
     ['widen', pop >= 140 && S.money > 1500 ? 1.6 + Math.min(3, (S.flowMax || 0) / 60) : 0],
-    ['avext', pop >= 140 && S.money > 2500 && S.av ? 2.6 : 0],
+    ['avext', pop >= 60 && S.money > 1500 && S.av ? 5.5 : 0],   /* проспект, сужающийся до улицы на перекрёстке, продлевают в первую очередь */
     ['bridge4', pop >= 140 && S.money > 3000 && S.av ? 2.8 : 0],
     ['jam', (S.jamMax || 0) > 12 && S.money > 2000 ? 3.2 + Math.min(3, (S.jamMax || 0) / 30) : 0],
     ['amuse', S.money > 3000 && S.buildings.some(b => b.type === 'amuse' && (fwOf(b) < amuseTarget(pop) || fhOf(b) < amuseTarget(pop))) ? 3 : 0],
@@ -2153,7 +2147,12 @@ function renew(){
 /* ---------- road classes: 4-lane avenues as paired tiles ---------- */
 const AVD = {1:[1,0], 2:[-1,0], 3:[0,1], 4:[0,-1]};
 const avOf = i => S.av ? S.av[i] | 0 : 0;
-const partner = i => { const a = avOf(i); return a ? i + AVD[a][0] + AVD[a][1] * W : -1; };
+/* Проспект бывает двух видов: старый — две клетки вплотную (разрыв 1), новый — три клетки: полосы туда, бульвар, полосы обратно (разрыв 2).
+   Новый строится симметрично от оси старой улицы: старая улица становится бульваром, ось проспекта = ось улицы. */
+const avGap = i => (S.avg && S.avg[i]) || 1;
+const partner = i => { const a = avOf(i); return a ? i + (AVD[a][0] + AVD[a][1] * W) * avGap(i) : -1; };
+const medOf = i => { const a = avOf(i); return a && avGap(i) === 2 ? i + AVD[a][0] + AVD[a][1] * W : -1; };
+const isMed = i => S.terrain[i] === 4;
 function avAxis(i){ const a = avOf(i); return a === 3 || a === 4 ? 'h' : a ? 'v' : null; }
 function avEnd(i){
   const a = avOf(i); if (!a) return false;
@@ -2174,6 +2173,7 @@ function medianOpen(i){
   const a = avOf(i); if (!a) return true;
   const p = partner(i), ax = avAxis(i), [ox, oy] = AVD[a];
   if (jDeg(i) >= 3 || jDeg(p) >= 3) return true;
+  { const m = medOf(i); if (m >= 0 && S.road[m]) return true; }   /* бульвар прерван: перекрёсток или конец проспекта */
   const x = i % W, y = (i / W) | 0, px = p % W, py = (p / W) | 0;
   const out = (cx, cy, dx, dy) => inb(cx + dx, cy + dy) && S.road[idx(cx + dx, cy + dy)];
   if (out(x, y, -ox, -oy) || out(px, py, ox, oy)) return true;
@@ -2233,6 +2233,7 @@ function planWiden(){
   } finally { PAV = null; }
 }
 function widenPlan(best, ext){
+  /* Симметричное расширение: старая улица — ось и будущий бульвар, новые полосы по одной клетке с каждой стороны */
   const axesList = [];
   if (rc(best, 1, 0) && rc(best, -1, 0)) axesList.push('h');
   if (rc(best, 0, 1) && rc(best, 0, -1)) axesList.push('v');
@@ -2257,14 +2258,16 @@ function widenPlan(best, ext){
     while (i1 > i0 && !isJn(run[i1]) && !abutsAv(run[i1], 1)) i1--;
     const seg = run.slice(i0, i1 + 1);
     if (seg.length < (ext ? 2 : 5)) continue;
-    for (const s of [1, -1]){
-      const codeOld = axes === 'h' ? (s > 0 ? 3 : 4) : (s > 0 ? 1 : 2), codeNew = axes === 'h' ? (s > 0 ? 4 : 3) : (s > 0 ? 2 : 1);
-      const sx = px * s, sy = py * s;
-      let ok = true, cost = 0; const reloc = [];
-      for (const t of seg){
-        const n = at(t, sx, sy); if (n < 0){ ok = false; break; }
+    const codeOf = sg => axes === 'h' ? (sg < 0 ? 3 : 4) : (sg < 0 ? 1 : 2);
+    const done2 = n => (S.avg && S.avg[n] === 2) || (PAV && PAV[n] && !(S.av && S.av[n]));
+    let ok = true, cost = 0; const reloc = [], cells = [];
+    for (const t of seg){
+      for (const sg of [-1, 1]){
+        const code = codeOf(sg), n = at(t, px * sg, py * sg); if (n < 0){ ok = false; break; }
         const nx = n % W, ny = (n / W) | 0;
-        if (nx < 1 || ny < 1 || nx >= W - 1 || ny >= H - 1 || !inL(nx, ny) || S.terrain[n] === 1 || avx(n)){ ok = false; break; }
+        if (nx < 1 || ny < 1 || nx >= W - 1 || ny >= H - 1 || !inL(nx, ny) || S.terrain[n] === 1 || isMed(n)){ ok = false; break; }
+        const ex = avx(n);
+        if (ex){ if (ex === code && done2(n)){ cells.push([n, code]); continue; } ok = false; break; }
         if (S.road[n]){
           if (!isJn(t) || rc(n, ax, ay) || rc(n, -ax, -ay)){ ok = false; break; }
         } else {
@@ -2273,35 +2276,37 @@ function widenPlan(best, ext){
             if ((ext ? WIDEN_EXT : WIDEN_DEMO).includes(b.type) && fwOf(b) === 1 && fhOf(b) === 1) cost += b.res.length * 3 + 2 + (ext ? 0 : b.wk.length);
             else if (relocOk(b)){ if (!reloc.includes(b)){ reloc.push(b); cost += 14 + b.res.length * 3 + fwOf(b) * fhOf(b) * 2; } }
             else { ok = false; break; } }
-          const far = at(n, sx, sy);
-          if (far >= 0 && (avx(far) || (S.road[far] && (rc(far, ax, ay) || rc(far, -ax, -ay))))){ ok = false; break; }
+          const far = at(n, px * sg, py * sg);
+          if (far >= 0 && (avx(far) || isMed(far) || (S.road[far] && (rc(far, ax, ay) || rc(far, -ax, -ay))))){ ok = false; break; }
         }
-        const far2 = at(n, sx * 2, sy * 2), back = at(t, -sx, -sy), back2 = at(t, -sx * 2, -sy * 2);
-        for (const q of [far2, back, back2]) if (q >= 0 && axOfCode(avx(q)) === axes){ ok = false; break; }
-        if (!ok) break;
+        const far2 = at(n, px * sg * 2, py * sg * 2);
+        if (far2 >= 0 && axOfCode(avx(far2)) === axes){ ok = false; break; }
+        cells.push([n, code]);
       }
-      if (!ok) continue;
-      /* ends: no forks into parallel streets and no jogs against avenues further along the street */
-      for (const [t, sg] of [[seg[0], -1], [seg[seg.length - 1], 1]]){
-        const n = at(t, sx, sy);
-        const e = at(n, ax * sg, ay * sg);
-        if (e >= 0 && S.road[e] && !avx(e) && (rc(e, ax * sg, ay * sg))){ ok = false; break; }
-        for (const k of [1, 2, 3, 4]){
-          for (const [row, want] of [[t, codeOld], [n, codeNew], [at(t, -sx, -sy), -1], [at(n, sx, sy), -1]]){
-            if (row < 0) continue;
-            const q = at(row, ax * sg * k, ay * sg * k); if (q < 0) continue;
-            const a = avx(q); if (!a || axOfCode(a) !== axes) continue;
-            if (a !== want){ ok = false; break; }
-          }
-          if (!ok) break;
-        }
-        if (!ok) break;
-      }
-      if (!ok) continue;
-      const sc = seg.length * 2 - cost / seg.length;
-      if (reloc.length > 2) continue;
-      if (!pick || sc > pick.sc) pick = {sc, axes, s, seg, codeOld, codeNew, px, py, bx:best % W, by:(best / W) | 0, ext, reloc};
+      if (!ok) break;
     }
+    if (!ok) continue;
+    /* концы: улица не должна продолжаться со стороны новой полосы (это снова был бы сдвиг), соседние проспекты на той же оси — того же вида */
+    for (const [t, sg] of [[seg[0], -1], [seg[seg.length - 1], 1]]){
+      for (const s2 of [-1, 1]){
+        const n = at(t, px * s2, py * s2), e = n < 0 ? -1 : at(n, ax * sg, ay * sg);
+        if (e >= 0 && S.road[e] && !avx(e) && rc(e, ax * sg, ay * sg)){ ok = false; break; }
+      }
+      if (!ok) break;
+      for (const k of [1, 2, 3, 4]){
+        for (const [row, want] of [[at(t, -px, -py), codeOf(-1)], [at(t, px, py), codeOf(1)], [t, -1], [at(t, -px * 2, -py * 2), -1], [at(t, px * 2, py * 2), -1]]){
+          if (row < 0) continue;
+          const q = at(row, ax * sg * k, ay * sg * k); if (q < 0) continue;
+          const a = avx(q); if (!a || axOfCode(a) !== axes) continue;
+          if (a !== want || !done2(q)){ ok = false; break; }
+        }
+        if (!ok) break;
+      }
+      if (!ok) break;
+    }
+    if (!ok || reloc.length > 3) continue;
+    const sc = seg.length * 2 - cost / seg.length;
+    if (!pick || sc > pick.sc) pick = {sc, axes, seg, cells, gap:2, px, py, bx:best % W, by:(best / W) | 0, ext, reloc};
   }
   return pick;
 }
@@ -2313,6 +2318,15 @@ function extendAvenue(){
     const cands = [];
     for (const c of avCorridors()){
       const h = c.ax === 'h', step = h ? 1 : W, side = h ? W : 1;
+      if (c.gap === 2){   /* проспект с бульваром продлеваем по оси: от средней клетки на его конце */
+        for (const [end, sg] of [[c.tiles[0], -1], [c.tiles[c.tiles.length - 1], 1]]){
+          const mid = end + side, b = mid + step * sg;
+          if (b < 0 || b >= W * H || (h && ((b / W) | 0) !== ((mid / W) | 0))) continue;
+          if (!S.road[mid] || !S.road[b] || avx(b) || S.terrain[b] === 1) continue;
+          cands.push([b, c.tiles.length + 3 + R() * 3]);
+        }
+        continue;
+      }
       for (const [end, sg] of [[c.tiles[0], -1], [c.tiles[c.tiles.length - 1], 1]]) for (const t of [end, end + side]){
         const b = t + step * sg; if (b < 0 || b >= W * H || (h && ((b / W) | 0) !== ((t / W) | 0))) continue;
         if (!S.road[b] || avx(b) || S.terrain[b] === 1) continue;
@@ -2379,14 +2393,20 @@ function fixJams(){
         }
       }
     }
+    /* расширить негде ни с одной стороны (здания, соседняя улица): честно пишем об этом, не чаще раза в 2 дня */
+    if (hot.length && (!S.nwT || S.t - S.nwT > 2 * DAY)){
+      S.nwT = S.t; const t0 = hot[0], x0 = t0 % W, y0 = (t0 / W) | 0, hz = rc(t0, 1, 0) && rc(t0, -1, 0);
+      log('build', '🚦 На улице ' + (hz ? hStreet(y0, x0) : vStreet(x0, y0)) + ' пробки, но расширить её до 4 полос нельзя: с обеих сторон здания или другая улица. Движение там остаётся двухполосным');
+    }
     return false;
   } finally { PAV = null; }
 }
 function startWiden(pl){
   const {axes, s, seg, codeOld, codeNew, px, py, bx, by, ext, bridge} = pl;
-  const av = [], newCells = [];
-  for (const t of seg){ const n = idx(t % W + px * s, ((t / W) | 0) + py * s); av.push([t, codeOld], [n, codeNew]); if (!S.road[n]) newCells.push(n); }
-  const cost = 120 * seg.length + (pl.reloc || []).length * 600; if (S.money < cost) return false;
+  const av = [], newCells = [], g2 = pl.gap === 2;
+  if (g2){ for (const sg of [-1, 1]) for (const [n, c] of pl.cells) if ((c === 1 || c === 3) === (sg < 0)){ av.push([n, c]); if (!S.road[n]) newCells.push(n); } }
+  else for (const t of seg){ const n = idx(t % W + px * s, ((t / W) | 0) + py * s); av.push([t, codeOld], [n, codeNew]); if (!S.road[n]) newCells.push(n); }
+  const cost = (g2 ? 170 : 120) * seg.length + (pl.reloc || []).length * 600; if (S.money < cost) return false;
   for (const b of pl.reloc || []) relocate(b, axes === 'h' ? hStreet(by, bx) : vStreet(bx, by));
   const t2 = S.t + (1 + R() * 1.2) * DAY;
   let chunk = [];
@@ -2398,15 +2418,15 @@ function startWiden(pl){
     if (st){ st.site.t2 = t2; st.site.t1 = Math.min(st.site.t1, t2 - DAY * .5); }
     chunk = [];
   };
-  let prev = -2;
-  for (const n of newCells){ const k = axes === 'h' ? n % W : (n / W) | 0; if (k !== prev + 1) flushChunk(); chunk.push(n); prev = k; }
+  let prev = -2, prevRow = -1;
+  for (const n of newCells){ const k = axes === 'h' ? n % W : (n / W) | 0, row = axes === 'h' ? (n / W) | 0 : n % W; if (k !== prev + 1 || row !== prevRow) flushChunk(); chunk.push(n); prev = k; prevRow = row; }
   flushChunk();
   S.money -= cost;
   const name = axes === 'h' ? hStreet(by, bx) : vStreet(bx, by);
   if (!S.works) S.works = [];
   const demo = newCells.filter(n => S.bld[n] >= 0).length;
   if (bridge){ S.works.push({t2, av, cells:seg, msg:'🌉 Мост на улице ' + name + ' стал четырёхполосным: проспект теперь идёт через реку без сужения'}); log('build', '🌉 Рядом со старым мостом на улице ' + name + ' строят второй пролёт: мост будет на 4 полосы, как и проспект'); return true; }
-  S.works.push({t2, av, cells:seg, msg:ext ? '🛣 Проспект продлили дальше по улице ' + name + ': теперь он идёт ровно, без сужения и сдвига' : '🛣 Улицу ' + name + ' расширили до 4 полос: по две полосы в каждую сторону и разделительный бульвар'});
+  S.works.push({t2, av, cells:seg, gap:g2 ? 2 : 1, axes, msg:ext ? '🛣 Проспект продлили дальше по улице ' + name + ': теперь он идёт ровно, без сужения и сдвига' : '🛣 Улицу ' + name + ' расширили до 4 полос: полосы добавили с обеих сторон, на месте старой улицы — бульвар'});
   log('build', ext ? '🚧 Проспект решили продлить по улице ' + name + (demo ? ': под снос ' + demo + (demo === 1 ? ' здание' : demo < 5 ? ' здания' : ' зданий') + ' на пути' : '') : '🚧 Начали расширять улицу ' + name + ' до 4 полос' + (demo ? ': под снос идут крайние дома' : ''));
   for (const t of seg) S.flow[t] *= .3;
   return true;
@@ -2418,34 +2438,115 @@ function healAvenues(){
     const a = S.av[i]; if (!a) continue;
     const ax = a === 3 || a === 4 ? [1, 0] : [0, 1], o = AVD[a];
     for (const g of [2, 3]){
-      const j = i + (ax[0] + ax[1] * W) * g; if (j < 0 || j >= W * H || S.av[j] !== a) continue;
+      const j = i + (ax[0] + ax[1] * W) * g; if (j < 0 || j >= W * H || S.av[j] !== a || avGap(j) !== avGap(i)) continue;
       const jx = j % W, ix = i % W; if (ax[0] && Math.abs(jx - ix) !== g) continue;
+      const gp = avGap(i), meds = [];
       let ok = true; const cells = [];
       for (let k = 1; k < g; k++){
-        const c = i + (ax[0] + ax[1] * W) * k, pc = c + o[0] + o[1] * W;
+        const c = i + (ax[0] + ax[1] * W) * k, pc = c + (o[0] + o[1] * W) * gp;
+        if (gp === 2){ const m = c + o[0] + o[1] * W; if (S.av[m] || S.terrain[m] === 1 || S.bld[m] >= 0){ ok = false; break; } meds.push(m); }
         for (const q of [c, pc]){
           if (S.av[q]) { ok = false; break; }
           if (S.terrain[q] === 1) { ok = false; break; }
           const bi = S.bld[q]; if (bi >= 0){ const b = S.buildings[bi]; if (fwOf(b) > 1 || fhOf(b) > 1 || !['house','thouse','yard','shop','cafe','park','square','gas','apt'].includes(b.type)){ ok = false; break; } }
         }
-        if (!ok) break; cells.push([c, a], [pc, S.av[i + o[0] + o[1] * W]]);
+        if (!ok) break; cells.push([c, a], [pc, S.av[partner(i)]]);
       }
       if (!ok || cells.some(([q, v]) => !v)) continue;
       for (const [q, v] of cells){
         const bi = S.bld[q]; if (bi >= 0){ const b = S.buildings[bi]; vacate(b, b); killBuilding(b); }
         S.road[q] = 1; S.av[q] = v; if (S.terrain[q] === 2) S.terrain[q] = 0;
+        if (gp === 2){ if (!S.avg) S.avg = new Array(W * H).fill(0); S.avg[q] = 2; }
       }
+      for (const m of meds) settleMedian(m);
       fixed++;
     }
   }
   if (fixed){ roadsVer++; S.avN = (S.avN || 0) + 1; for (const b of S.buildings) if (b.e >= 0 && !S.road[b.e]) b.e = -1; }
+}
+/* клетка между полосами проспекта с бульваром: остаётся дорогой только там, где через неё идёт поперечная улица
+   или улица продолжает проспект по оси; иначе это бульвар (газон с деревьями) */
+function laneFlank(t){
+  for (const d of [1, W]){ const a = t - d, b = t + d; if (a >= 0 && b < W * H && avGap(a) === 2 && avOf(a) && partner(a) === b) return d; }
+  return 0;
+}
+function settleMedian(t){
+  if (t < 0 || t >= W * H) return;
+  const d = laneFlank(t); if (!d) return;
+  const along = d === 1 ? W : 1, rd = k => k >= 0 && k < W * H && S.road[k];
+  const cross = rd(t - 2 * d) || rd(t + 2 * d);
+  const cont = [t - along, t + along].some(n => rd(n) && !laneFlank(n));
+  const endHere = [t - d, t + d].some(l => !(rd(l - along) && avOf(l - along)) || !(rd(l + along) && avOf(l + along)));   /* здесь полосы кончаются: место разворота и выезда */
+  if (cross || cont || endHere){ if (!S.road[t]){ S.road[t] = 1; if (isMed(t)) S.terrain[t] = 0; roadsVer++; } return; }
+  if (S.road[t]){
+    removeRoadTiles([t]);
+    if (typeof traffic !== 'undefined') for (const v of traffic) if (v.path && v.path.includes(t)) v.pi = v.path.length - 1;
+  }
+  if (S.bld[t] < 0 && S.terrain[t] !== 1) S.terrain[t] = 4;
+}
+/* старые проспекты (две клетки вплотную) перестраиваются в проспект с бульваром: добавляется третья клетка,
+   одна из старых становится бульваром. Выбираем ту сторону, где улицы продолжают проспект по оси.
+   Если мешают крупные здания, вода или соседняя улица — проспект остаётся как был. */
+function convertLegacyAvenues(){
+  if (!S.av) return {n:0, kept:0, demo:0};
+  avCorners();
+  const busy = new Set(); for (const w of S.works || []){ for (const [i] of w.av) busy.add(i); for (const i of w.cells || []) busy.add(i); }
+  let n = 0, kept = 0, demoN = 0;
+  for (const c of avCorridors()){
+    if (c.gap === 2) continue;
+    const h = c.ax === 'h', step = h ? 1 : W, side = h ? W : 1;
+    const inRow = (a, b) => b >= 0 && b < W * H && (!h || ((a / W) | 0) === ((b / W) | 0));
+    const R0 = c.tiles, R1 = R0.map(t => t + side), all = R0.concat(R1);
+    const endsN = all.flatMap(t => [t - step, t + step]).filter(q => q >= 0 && q < W * H);
+    if (all.some(t => busy.has(t) || S.terrain[t] === 1) || all.concat(endsN).some(t => acSet.has(t))){ kept++; continue; }
+    const codeA = S.av[R0[0]], codeB = S.av[R1[0]];
+    const cont = row => { let k = 0; for (const [t, sg] of [[row[0], -1], [row[row.length - 1], 1]]){ const b = t + step * sg; if (inRow(t, b) && S.road[b] && !S.av[b]) k++; } return k; };
+    const opts = [{med:R0, row:R0.map(t => t - side), code:codeA, out:-side, keep:R1}, {med:R1, row:R1.map(t => t + side), code:codeB, out:side, keep:R0}];
+    opts.sort((a, b) => cont(b.med) - cont(a.med));
+    let done = false;
+    for (const o of opts){
+      let ok = true; const demo = [], reloc = [];
+      for (const q of o.row){
+        if (q < 0 || q >= W * H){ ok = false; break; }
+        const qx = q % W, qy = (q / W) | 0;
+        if (qx < 1 || qy < 1 || qx >= W - 1 || qy >= H - 1 || S.terrain[q] === 1 || isMed(q) || S.av[q] || busy.has(q)){ ok = false; break; }
+        if (S.road[q]){ if (rc(q, step === 1 ? 1 : 0, step === 1 ? 0 : 1) || rc(q, step === 1 ? -1 : 0, step === 1 ? 0 : -1)){ ok = false; break; } continue; }
+        const bi = S.bld[q];
+        if (bi >= 0){ const b = S.buildings[bi];
+          if (fwOf(b) === 1 && fhOf(b) === 1 && WIDEN_EXT.includes(b.type)){ if (!demo.includes(b)) demo.push(b); }
+          else if (relocOk(b) && fwOf(b) * fhOf(b) <= 4 && !['hall','beach','port','boatst','bigpark','cemetery'].includes(b.type)){ if (!reloc.includes(b)) reloc.push(b); if (reloc.length > 2){ ok = false; break; } }
+          else { ok = false; break; } }
+        const far = q + o.out;
+        if (far >= 0 && far < W * H && (S.av[far] || isMed(far) || (S.road[far] && (rc(far, step === 1 ? 1 : 0, step === 1 ? 0 : 1) || rc(far, step === 1 ? -1 : 0, step === 1 ? 0 : -1))))){ ok = false; break; }
+      }
+      if (!ok) continue;
+      if (!S.avg) S.avg = new Array(W * H).fill(0);
+      for (const b of demo){ vacate(b, b); killBuilding(b); }
+      for (const b of reloc) relocate(b, h ? hStreet((o.med[0] / W) | 0, o.med[0] % W) : vStreet(o.med[0] % W, (o.med[0] / W) | 0), ' мешает перестройке проспекта с бульваром на улице ' + (h ? hStreet((o.med[0] / W) | 0, o.med[0] % W) : vStreet(o.med[0] % W, (o.med[0] / W) | 0)));
+      for (const q of o.row){ S.road[q] = 1; S.av[q] = o.code; S.avg[q] = 2; if (S.terrain[q] === 2) S.terrain[q] = 0; }
+      for (const q of o.keep) S.avg[q] = 2;
+      for (const q of o.med){ S.av[q] = 0; S.avg[q] = 0; }
+      roadsVer++;
+      for (const q of o.med) settleMedian(q);
+      n++; demoN += demo.length + reloc.length; done = true; break;
+    }
+    if (!done) kept++;
+  }
+  if (n){ roadsVer++; S.avN = (S.avN || 0) + 1; for (const b of S.buildings) if (b.e >= 0 && !S.road[b.e]) b.e = -1; }
+  return {n, kept, demo:demoN};
 }
 function tickWorks(){
   if (!S.works) return;
   S.works = S.works.filter(w => {
     if (S.t < w.t2) return true;
     if (w.av.some(([i]) => !S.road[i] && S.bld[i] >= 0 && S.buildings[S.bld[i]].type === 'site')) return true;
-    for (const [i, c] of w.av){ S.road[i] = 1; S.av[i] = c; }
+    for (const [i, c] of w.av){ S.road[i] = 1; S.av[i] = c; if (S.terrain[i] === 2) S.terrain[i] = 0; }
+    if (w.gap === 2){
+      if (!S.avg) S.avg = new Array(W * H).fill(0);
+      for (const [i] of w.av) S.avg[i] = 2;
+      const st = w.axes === 'h' ? 1 : W, ends = [w.cells[0] - st, w.cells[w.cells.length - 1] + st];
+      for (const t of w.cells.concat(ends)) settleMedian(t);
+    }
     S.avN = (S.avN || 0) + 1;
     healAvenues();
     for (const b of S.buildings) if (b.e >= 0) b.e = -1;
@@ -2460,18 +2561,18 @@ function avCorridors(){
   const seen = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++){
     const a = S.av[i]; if ((a !== 3 && a !== 1) || seen[i]) continue;
-    const h = a === 3, st = h ? 1 : W, pc = h ? 4 : 2, row = (i / W) | 0;
-    const ok = k => k >= 0 && k < W * H && S.av[k] === a && S.av[k + (h ? W : 1)] === pc && (!h || ((k / W) | 0) === row);
+    const h = a === 3, st = h ? 1 : W, pc = h ? 4 : 2, row = (i / W) | 0, gp = avGap(i);
+    const ok = k => k >= 0 && k < W * H && S.av[k] === a && avGap(k) === gp && S.av[k + (h ? W : 1) * gp] === pc && (!h || ((k / W) | 0) === row);
     if (!ok(i)) continue;
     let s0 = i; while (ok(s0 - st)) s0 -= st;
     const tiles = []; for (let k = s0; ok(k); k += st){ seen[k] = 1; tiles.push(k); }
     const f = tiles[0], l = tiles[tiles.length - 1];
-    out.push({ax:h ? 'h' : 'v', tiles, line:h ? (f / W) | 0 : f % W, from:h ? f % W : (f / W) | 0, to:h ? l % W : (l / W) | 0});
+    out.push({ax:h ? 'h' : 'v', tiles, gap:gp, line:h ? (f / W) | 0 : f % W, from:h ? f % W : (f / W) | 0, to:h ? l % W : (l / W) | 0});
   }
   return out;
 }
 function corridorIssues(cs){
-  const bad = [];
+  const bad = []; cs = cs.filter(c => c.gap !== 2);   /* проспекты с бульваром не сужаем: они построены симметрично */
   const gapOf = (A, B) => Math.max(A.from, B.from) - Math.min(A.to, B.to) - 1;
   for (let a = 0; a < cs.length; a++) for (let b = a + 1; b < cs.length; b++){
     const A = cs[a], B = cs[b]; if (A.ax !== B.ax || A.line === B.line || Math.abs(A.line - B.line) > 3) continue;
@@ -2647,7 +2748,11 @@ function junctionIds(){
   if (key === jcKey && jcArr && jcS === S) return jcArr;
   jcKey = key; jcS = S; jcArr = new Int32Array(W * H).fill(-1); jFlag = new Int8Array(W * H);
   for (let i = 0; i < W * H; i++) if (isJraw(i)) jFlag[i] = 1;
-  for (let i = 0; i < W * H; i++) if (jFlag[i] === 1 && avOf(i)){ const p = partner(i); if (p >= 0 && S.road[p]) jFlag[p] = 2; }
+  /* конец проспекта с бульваром, где улица просто продолжается по оси: это слияние полос, а не перекрёсток (без зебр и светофоров) */
+  if (S.avg) for (let i = 0; i < W * H; i++) if (jFlag[i] === 1 && !avOf(i)){
+    for (const d of [1, W]){ const a = i - d, b = i + d; if (a < 0 || b >= W * H || avGap(a) !== 2 || partner(a) !== b) continue; if (jFlag[a] !== 1 && jFlag[b] !== 1) jFlag[i] = 0; }
+  }
+  for (let i = 0; i < W * H; i++) if (jFlag[i] === 1 && avOf(i)){ const p = partner(i); if (p >= 0 && S.road[p]) jFlag[p] = 2; const m = medOf(i); if (m >= 0 && S.road[m]) jFlag[m] = 2; }
   for (let i = 0; i < W * H; i++) if (jFlag[i] === 2) jFlag[i] = 1;
   for (let i = 0; i < W * H; i++){
     if (jcArr[i] >= 0 || !jFlag[i]) continue;
@@ -2804,7 +2909,7 @@ function rectFreeAll(x, y, w, h, self){
     const cx = x + dx, cy = y + dy; if (cx < 1 || cy < 1 || cx >= W - 1 || cy >= H - 1 || !inL(cx, cy)) return null;
     const i = idx(cx, cy);
     if (S.road[i]){ if ((S.av && S.av[i]) || S.terrain[i] === 1) return null; roads.push(i); continue; }
-    if (S.terrain[i] === 1 || S.terrain[i] === 3) return null;
+    if (S.terrain[i] === 1 || S.terrain[i] >= 3) return null;
     const bi = S.bld[i]; if (bi < 0) continue;
     const b = S.buildings[bi]; if (b === self || !relocOk(b) || b.type === 'hall' || b.type === 'amuse' || b.type === 'powerplant') return null;
     hit.add(b);
@@ -2916,6 +3021,7 @@ function avBridgeGood(comp){
 function widenBridge(){
   if (!S.av || S.money < 2500) return false;
   for (const c of avCorridors()){
+    if (c.gap === 2) continue;   /* у проспекта с бульваром через реку идут два моста: старый посередине остаётся */
     const h = c.ax === 'h', step = h ? 1 : W, side = h ? W : 1, axes = c.ax;
     for (const [end, sg] of [[c.tiles[0], -1], [c.tiles[c.tiles.length - 1], 1]]) for (const r of [0, 1]){
       const t0 = end + (r ? side : 0), s2 = r ? -1 : 1, nOff = side * s2;
@@ -2950,7 +3056,7 @@ function widenBridge(){
 function removeRoadTiles(list){
   const set = new Set(list);
   for (const c of list){
-    if (S.av && S.av[c]){ const p = partner(c); if (p >= 0 && S.av[p] && !set.has(p)) S.av[p] = 0; S.av[c] = 0; }
+    if (S.av && S.av[c]){ const p = partner(c), m = medOf(c); if (p >= 0 && S.av[p] && !set.has(p)){ S.av[p] = 0; if (S.avg) S.avg[p] = 0; } if (m >= 0 && isMed(m)) S.terrain[m] = 0; S.av[c] = 0; if (S.avg) S.avg[c] = 0; }
     S.road[c] = 0; if (S.rl) S.rl[c] = 0; if (S.flow) S.flow[c] = 0;
   }
   roadsVer++;
@@ -3216,6 +3322,20 @@ function load(str){
   if (!S.lim){ S.lim = {x0:1, y0:1, x1:W - 1, y1:H - 1}; S.limN = STAGES.length - 1; }
   if (S.people.length >= 30){ mergeParks(); mergeParks(); }
   const td = tidyRoads(999, true); if (td.nAv + td.nStub) log('build', '🛣 Мэрия навела порядок на дорогах' + (td.nAv ? ': переделала неудачные куски проспектов (' + td.nAv + ')' : '') + (td.nStub ? (td.nAv ? ' и разобрала' : ': разобрала') + ' короткие тупики (' + td.nStub + ')' : ''));
+  if (S.pddV !== 1){ S.pddV = 1; pddWarn(); }
+  if (S.bvdV !== 1){
+    S.bvdV = 1; const cv = convertLegacyAvenues();
+    if (cv.n) log('build', '🌳 Проспекты перестроили по новым правилам: ' + cv.n + ' участк. теперь с бульваром посередине, ось совпадает с осью улиц' + (cv.demo ? ' (снесено ' + cv.demo + ' мелких зданий на пути)' : ''));
+    if (cv.kept) log('build', '🚧 ' + cv.kept + ' участк. старых проспектов перестроить не удалось (мешают крупные здания, вода или соседняя улица) — они остались двухклеточными');
+  }
+}
+/* ПДД: места, где правила не выполнить (улицы вплотную без места на объезд/разворот, короткие тупики). Только предупреждение, ничего не ломаем. */
+function pddWarn(){
+  try {
+    const bad = corridorIssues(avCorridors()), stubs = shortStubs().filter(ch => ch.every(t => S.road[t]));
+    S.rework = bad.map(c => c.tiles[0]).concat(stubs.map(ch => ch[0]));
+    if (S.rework.length) log('build', '🚦 ПДД: ' + S.rework.length + ' участк. дорог требуют переделки (улицы вплотную или тупики без разворота): машины там могут ждать дольше');
+  } catch (e) { S.rework = []; }
 }
 function save(){ try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); lastAutoSave = Date.now(); localStorage.setItem(SAVE_KEY + '-at', String(lastAutoSave)); } catch(e){} }
 function nowTod(){ const d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 + d.getMilliseconds() / 60000; }
@@ -3343,17 +3463,29 @@ function bush(x, y, r, c){
   g.addColorStop(0, mix(c, .35)); g.addColorStop(1, mix(c, -.25));
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y - r * .3, r, 0, 7); ctx.fill();
 }
+/* Геометрия здания: всё считается от границ клетки (отступ одинаковый для всех типов, без случайных сдвигов).
+   Фасад дома смотрит на дорогу (сторона, где стоит въезд entry); между фасадом и дорогой — дорожка и место под машину,
+   за домом — двор. Пристройка дома — постоянная ширина .2 у боковой стены, если она есть (по id). */
+const INSET = .03, HOUSE_SET = .3, ANNEX_W = .2;
+function frontDir(b){
+  const e = entry(b); if (e < 0) return [0, 1];
+  const dx = (e % W) - b.x, dy = ((e / W) | 0) - b.y;
+  if (Math.abs(dx) + Math.abs(dy) === 1) return [dx, dy];
+  return Math.abs(dx) >= Math.abs(dy) ? [Math.sign(dx) || 1, 0] : [0, Math.sign(dy) || 1];
+}
+function annexOf(b){ return hash(b.id * 19) < .5 ? (hash(b.id * 23) < .5 ? -1 : 1) : 0; }
 function fp(b){
-  const i = b.type === 'house' ? .14 : .08, fw = fwOf(b), fh = fhOf(b);
-  let x0 = b.x + i, x1 = b.x + fw - i, y0 = b.y + i + (b.type === 'house' ? .08 : 0), y1 = b.y + fh - i;
-  if (b.type === 'house'){
-    const long = hash(b.id * 43) < .55, wv = b.gen === 2 ? (long ? .74 + hash(b.id * 3 + 1) * .08 : .4 + hash(b.id * 3 + 1) * .06) : .5 + hash(b.id * 3 + 1) * .3, dv = b.gen === 2 ? (long ? .36 + hash(b.id * 5 + 2) * .06 : .62 + hash(b.id * 5 + 2) * .08) : .4 + hash(b.id * 5 + 2) * .22;
-    const free = 1 - .2 - wv, cx = b.x + .1 + wv / 2 + free * hash(b.id * 7 + 3);
-    x0 = cx - wv / 2; x1 = cx + wv / 2; y1 = b.y + .88 - hash(b.id * 11 + 5) * .12; y0 = y1 - dv;
-  } else if (b.type === 'apt' || b.type === 'office' || b.type === 'shop' || b.type === 'cafe'){
-    const j = (hash(b.id * 3 + 1) - .5) * .06; x0 += j; x1 += j;
-  }
-  return [x0, x1, y0, y1];
+  const i = INSET, fw = fwOf(b), fh = fhOf(b);
+  if (b.type !== 'house') return [b.x + i, b.x + fw - i, b.y + i, b.y + fh - i];
+  const [dx, dy] = frontDir(b), D = b.gen === 2 ? .4 : .46;
+  const ann = dy !== 0 ? annexOf(b) : 0;
+  const l0 = (dx ? b.y : b.x) + i + (ann < 0 ? ANNEX_W : 0), l1 = (dx ? b.y + 1 : b.x + 1) - i - (ann > 0 ? ANNEX_W : 0);
+  let p0, p1;
+  if (dy > 0){ p1 = b.y + 1 - HOUSE_SET; p0 = p1 - D; }
+  else if (dy < 0){ p0 = b.y + HOUSE_SET; p1 = p0 + D; }
+  else if (dx > 0){ p1 = b.x + 1 - HOUSE_SET; p0 = p1 - D; }
+  else { p0 = b.x + HOUSE_SET; p1 = p0 + D; }
+  return dx ? [p0, p1, l0, l1] : [l0, l1, p0, p1];
 }
 function plantTowers(b){
   const [x0, x1, y0, y1] = fp(b), fw = fwOf(b), fh = fhOf(b);
@@ -3374,20 +3506,16 @@ function renderBuilding(b, h){
     case 'house': {
       const v = houseVar(b), wall = WALLS[(hv * WALLS.length) | 0], roof = ROOFS[(hr * ROOFS.length) | 0];
       const doorC = ['#7a5233','#4f6b4a','#7a3b35','#3f5670'][(hash(b.id * 5) * 4) | 0];
-      if (y0 - b.y > .3){
-        const sx = hash(b.id * 29) < .5 ? b.x + .66 : b.x + .1, sy1 = b.y + .25;
-        facade(sx, sx + .2, sy1, .12, '#9c7a55'); ctx.fillStyle = vg(sy1 - .26, sy1 - .12, '#7d6b5a', '#5c4d40'); ctx.fillRect(sx - .015, sy1 - .27, .23, .15);
-      }
-      if (hash(b.id * 19) < .5){
-        const side = hash(b.id * 23) < .5 ? -1 : 1, ww = .16 + hash(b.id * 37) * .12;
-        const wx0 = side < 0 ? Math.max(b.x + .05, x0 - ww) : x1 - .04, wx1 = side < 0 ? x0 + .04 : Math.min(b.x + .95, x1 + ww);
-        if (wx1 - wx0 > .12){
-          const wy1 = y1 - .06, wy0 = y0 + .1, wh = h * .78;
-          facade(wx0, wx1, wy1, wh, WALLS[(hash(b.id * 41) * WALLS.length) | 0]);
-          glass(wx0 + (wx1 - wx0) / 2 - .04, wy1 - wh + .07, .08, .07, '#f6f2ea');
-          hipRoof(wx0 - .02, wy0 - wh - .02, wx1 + .02, wy1 - wh + .04, ROOFS[(hr * ROOFS.length) | 0], 0);
-          eaveShade(wx0, wx1, wy1 - wh + .04);
-        }
+      { const sx = hash(b.id * 29) < .5 ? x0 + w * .1 : x1 - w * .1 - .2, sy1 = ry0 + .34;
+        facade(sx, sx + .2, sy1, .12, '#9c7a55'); ctx.fillStyle = vg(sy1 - .26, sy1 - .12, '#7d6b5a', '#5c4d40'); ctx.fillRect(sx - .015, sy1 - .27, .23, .15); }
+      const [fdx, fdy] = frontDir(b), ann = fdy !== 0 ? annexOf(b) : 0;
+      if (ann){
+        const wx0 = ann < 0 ? b.x + INSET : x1, wx1 = ann < 0 ? x0 : b.x + 1 - INSET;
+        const wy1 = y1 - .06, wy0 = y0 + .1, wh = h * .78;
+        facade(wx0, wx1, wy1, wh, WALLS[(hash(b.id * 41) * WALLS.length) | 0]);
+        glass(wx0 + (wx1 - wx0) / 2 - .04, wy1 - wh + .07, .08, .07, '#f6f2ea');
+        hipRoof(wx0 - .02, wy0 - wh - .02, wx1 + .02, wy1 - wh + .04, ROOFS[(hr * ROOFS.length) | 0], 0);
+        eaveShade(wx0, wx1, wy1 - wh + .04);
       }
       if (v === 1){
         const wood = ['#b98a5a','#8fa4b5','#c9b27a','#a7c0a0'][(hv * 4) | 0];
@@ -3863,7 +3991,7 @@ function renderBuilding(b, h){
   }
 }
 function sprite(b){
-  const key = S.seed + ':' + b.type + ':' + (b.gen || 0) + ':' + (b.lvl || 0) + ':' + (b.v || '') + ':' + fwOf(b) + 'x' + fhOf(b); let s = SPR.get(b.id);
+  const key = S.seed + ':' + b.type + ':' + (b.gen || 0) + ':' + (b.lvl || 0) + ':' + (b.v || '') + ':' + fwOf(b) + 'x' + fhOf(b) + ':' + fp(b).map(v => v.toFixed(3)).join(',') + ':' + frontDir(b).join(','); let s = SPR.get(b.id);
   if (s && s.key === key) return s;
   const fw = fwOf(b), fh = fhOf(b), tall = b.type === 'hall' && fw > 1 ? .4 : b.type === 'zhk' ? 2.9 : b.type === 'block' ? .3 : b.type === 'tvtower' ? 3.4 : b.type === 'airport' ? 1.9 : b.type === 'church' ? .5 : b.type === 'powerplant' ? 1.4 : b.type === 'watertower' ? 1.4 : b.type === 'gas' ? .5 : 0;
   const h = bH(b), ox = b.x - .2, oy = b.y - h - .9 - tall, w = fw + .95, hh = fh + h + 1.05 + tall;
@@ -4322,6 +4450,21 @@ function drawZebras(x, y, i){
     }
   }
 }
+/* стрелки полос перед перекрёстком: правая — прямо и направо, левая — налево и прямо */
+function drawLaneArrows(x, y, dx, dy){
+  const nx = -dy, ny = dx, bx = x + .5 + dx * .12, by = y + .5 + dy * .12;
+  ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = .03; ctx.lineCap = 'butt';
+  for (const side of [1, -1]){
+    const ox = bx + nx * .165 * side, oy = by + ny * .165 * side, L = .26;
+    const P = (f, l) => [ox + dx * f + nx * l, oy + dy * f + ny * l];
+    let m = P(-L / 2, 0), t = P(L / 2, 0);
+    ctx.beginPath(); ctx.moveTo(m[0], m[1]); ctx.lineTo(t[0], t[1]); ctx.stroke();
+    poly([P(L / 2 + .07, 0), P(L / 2 - .02, .05), P(L / 2 - .02, -.05)]); ctx.fill();
+    const tb = P(-.02, 0), te = P(.06, side * .09);   /* ответвление: вправо у правой полосы, влево у левой */
+    ctx.beginPath(); ctx.moveTo(tb[0], tb[1]); ctx.lineTo(te[0], te[1]); ctx.stroke();
+    poly([P(.12, side * .11), P(.05, side * .05), P(.04, side * .13)]); ctx.fill();
+  }
+}
 function drawStopLines(x, y, i){
   if (isJ(i)) return;
   const SW = .17;
@@ -4333,8 +4476,9 @@ function drawStopLines(x, y, i){
     if (td && (td[0] !== dx || td[1] !== dy)) continue;
     const rx = -dy, ry = dx;
     let from, to;
-    if (td){ from = -.5 + (avOf(i) && AVD[avOf(i)][0] === -rx && AVD[avOf(i)][1] === -ry ? 0 : SW); to = .5 - (avOf(i) && AVD[avOf(i)][0] === rx && AVD[avOf(i)][1] === ry ? 0 : SW); from = -.5 + SW * 0; to = .5 - SW; from = (AVD[avOf(i)][0] === -rx && AVD[avOf(i)][1] === -ry) ? -.5 + SW : -.5; to = (AVD[avOf(i)][0] === rx && AVD[avOf(i)][1] === ry) ? .5 - SW : .5 - SW; from = Math.min(from, to - .1); }
+    if (td){ from = -.5 + (avOf(i) && AVD[avOf(i)][0] === -rx && AVD[avOf(i)][1] === -ry ? 0 : SW); to = .5 - (avOf(i) && AVD[avOf(i)][0] === rx && AVD[avOf(i)][1] === ry ? 0 : SW); from = -.5 + SW * 0; to = .5 - SW; from = (AVD[avOf(i)][0] === -rx && AVD[avOf(i)][1] === -ry) ? -.5 + SW : -.5; to = (AVD[avOf(i)][0] === rx && AVD[avOf(i)][1] === ry) ? .5 - SW : .5 - SW; from = Math.min(from, to - .1); if (avGap(i) === 2){ from = -.5 + SW; to = .5 - SW; } }
     else { from = 0; to = .5 - SW; }
+    if (td && avOf(i)) drawLaneArrows(x, y, dx, dy);
     const cx = x + .5 + dx * .44, cy = y + .5 + dy * .44;
     ctx.fillStyle = 'rgba(255,255,255,.92)';
     if (!sig){
@@ -4352,6 +4496,11 @@ function drawStopLines(x, y, i){
   }
 }
 function drawMedian(x, y, i, a){
+  if (avGap(i) === 2){   /* полосы одного направления: только прерывистая между ними, бордюр со стороны бульвара рисует сама клетка */
+    const ox = AVD[a][0]; ctx.fillStyle = 'rgba(255,255,255,.75)';
+    if (!isJ(i)){ if (ox) for (let k = .1; k < 1; k += .5) ctx.fillRect(x + .49, y + k, .025, .25); else for (let k = .1; k < 1; k += .5) ctx.fillRect(x + k, y + .49, .25, .025); }
+    return;
+  }
   const SW = .17, [ox, oy] = AVD[a], open = medianOpen(i);
   const ex = ox > 0 ? x + 1 - SW : x, ey = oy > 0 ? y + 1 - SW : y, ew = ox ? SW : 1.01, eh = oy ? SW : 1.01;
   const p = partner(i), out = (dx, dy) => { const xx = i % W + dx, yy = ((i / W) | 0) + dy; return inb(xx, yy) && S.road[idx(xx, yy)]; };
@@ -4359,8 +4508,8 @@ function drawMedian(x, y, i, a){
   ctx.fillStyle = COL.road; ctx.fillRect(ex, ey, ew, eh);
   if (!open && (a === 1 || a === 3)){
     ctx.fillStyle = '#e8c54a';
-    if (ox){ ctx.fillRect(x + 1 - .03, y, .02, 1.01); ctx.fillRect(x + 1 + .01, y, .02, 1.01); }
-    else { ctx.fillRect(x, y + 1 - .03, 1.01, .02); ctx.fillRect(x, y + 1 + .01, 1.01, .02); }
+    if (ox){ ctx.fillRect(x + 1 - .045, y, .03, 1.01); ctx.fillRect(x + 1 + .015, y, .03, 1.01); }
+    else { ctx.fillRect(x, y + 1 - .045, 1.01, .03); ctx.fillRect(x, y + 1 + .015, 1.01, .03); }
   }
   if (!open || !cross){
     ctx.fillStyle = 'rgba(255,255,255,.75)';
@@ -4384,7 +4533,7 @@ function drawAvenues(vx0, vy0, vx1, vy1, wetOnly){
   const MW = .15, pave = '#d2cdc0', SW = .17;
   const decor = [];
   for (let y = Math.max(0, vy0 - 2); y <= Math.min(H - 1, vy1 + 2); y++) for (let x = Math.max(0, vx0 - 2); x <= Math.min(W - 1, vx1 + 1); x++){
-    const i = idx(x, y), a = avOf(i); if (!S.road[i] || (a !== 1 && a !== 3)) continue;
+    const i = idx(x, y), a = avOf(i); if (!S.road[i] || (a !== 1 && a !== 3) || avGap(i) === 2) continue;
     const p = partner(i); if (p < 0 || !S.road[p]) continue;
     if (wetOnly && S.terrain[i] !== 1 && S.terrain[p] !== 1) continue;
     const vert = a === 1;
@@ -4804,11 +4953,7 @@ function driveOf(b){
     if (Math.abs(tx - ex) + Math.abs(ty - ey) !== 1) continue;
     const d = [ex - tx, ey - ty]; let car = CAR_DRIVE.includes(b.type);
     let u = .5, wd = car ? .3 : .14, dep = car ? .42 : .3;
-    if (b.type === 'house'){
-      const F = fp(b);
-      if (d[1] !== 0){ const l = F[0] - tx, r = tx + 1 - F[1]; if (Math.max(l, r) >= .2){ u = r >= l ? (F[1] + tx + 1) / 2 - tx : (tx + F[0]) / 2 - tx; wd = Math.min(.26, Math.max(l, r) - .04); dep = d[1] > 0 ? Math.max(.3, ty + 1 - F[2] - .05) : .45; } else { car = false; } }
-      else { u = .82; wd = .24; dep = .5; }
-    }
+    if (b.type === 'house'){ u = .5; wd = .28; dep = HOUSE_SET - .04; }
     return {tx, ty, e, d, u, wd, dep, car};
   }
   return null;
@@ -4844,7 +4989,7 @@ function drawDriveways(vx0, vy0, vx1, vy1, now){
       ctx.fillStyle = car ? '#8c9197' : col; ctx.fillRect(cx, cy, cw, chh);
       if (car){ ctx.fillStyle = 'rgba(255,255,255,.35)'; if (d[1]) for (let k = .02; k < chh; k += .045) ctx.fillRect(cx + .01, cy + k, cw - .02, .012); else for (let k = .02; k < cw; k += .045) ctx.fillRect(cx + k, cy + .01, .012, chh - .02); }
     }
-    if (b.type === 'house' && car && dep >= .3){
+    if (b.type === 'house' && car && dep >= .15){
       const owner = b.res.map(id => P.get(id)).find(p => p && p.st === 'in' && p.loc === b.id && hasCar(p));
       if (owner){
         const ang = d[1] > 0 ? Math.PI / 2 : d[1] < 0 ? -Math.PI / 2 : d[0] > 0 ? 0 : Math.PI;
@@ -5010,15 +5155,20 @@ function drawCemetery(b, now){
   ctx.fillStyle = '#efe8d8'; ctx.fillRect(x + .9, y + .82, .2, .16); ctx.fillStyle = '#d6b45a'; ctx.beginPath(); ctx.arc(x + 1, y + .8, .07, Math.PI, 0); ctx.fill(); ctx.fillRect(x + .995, y + .62, .01, .12);
 }
 function drawHouseYard(b, x, y){
-  const F = fp(b), cx = (F[0] + F[1]) / 2;
-  const R_ = (dx, dy) => inb(x + dx, y + dy) && S.road[idx(x + dx, y + dy)];
+  const F = fp(b), [fdx, fdy] = frontDir(b), cx = (F[0] + F[1]) / 2, cy = (F[2] + F[3]) / 2;
   ctx.fillStyle = '#a8cd86'; ctx.fillRect(x + .03, y + .03, .94, .94);
-  if (F[2] - y > .32){ ctx.fillStyle = '#8a6a48'; ctx.fillRect(x + .12, y + .08, .38, F[2] - y - .14); ctx.fillStyle = '#5c9a45'; for (let k = 0; k < 4; k++) ctx.fillRect(x + .14, y + .11 + k * ((F[2] - y - .2) / 4), .34, .03); }
+  /* задний двор: клумба с кустами, если за домом есть место */
+  const g0 = fdy > 0 ? y : fdy < 0 ? F[3] : fdx > 0 ? x : F[1], g1 = fdy > 0 ? F[2] : fdy < 0 ? y + 1 : fdx > 0 ? F[0] : x + 1, gl = g1 - g0;
+  if (gl > .2){
+    ctx.fillStyle = '#8a6a48';
+    if (fdy) ctx.fillRect(x + .12, g0 + .04, .38, gl - .08); else ctx.fillRect(g0 + .04, y + .12, gl - .08, .38);
+    ctx.fillStyle = '#5c9a45';
+    for (let k = 0; k < 4; k++){ const q = g0 + .07 + k * ((gl - .14) / 4); if (fdy) ctx.fillRect(x + .14, q, .34, .03); else ctx.fillRect(q, y + .14, .03, .34); }
+  }
+  /* дорожка: от двери к краю клетки, стороной дороги, по прямой */
+  const fe = fdy > 0 ? F[3] : fdy < 0 ? F[2] : fdx > 0 ? F[1] : F[0], re = fdy > 0 ? y + 1 : fdy < 0 ? y : fdx > 0 ? x + 1 : x;
   ctx.fillStyle = '#d4c7a8';
-  if (R_(0, 1) || (!R_(-1, 0) && !R_(1, 0) && !R_(0, -1))) ctx.fillRect(cx - .05, F[3], .1, y + 1 - F[3]);
-  else if (R_(1, 0)){ ctx.fillRect(cx - .05, F[3], .1, .08); ctx.fillRect(cx - .05, F[3] + .03, x + 1 - cx, .08); }
-  else if (R_(-1, 0)){ ctx.fillRect(cx - .05, F[3], .1, .08); ctx.fillRect(x, F[3] + .03, cx - x + .05, .08); }
-  else { ctx.fillRect(cx - .05, F[3], .1, .08); ctx.fillRect(F[1] + .02, y, .08, F[3] + .1 - y); ctx.fillRect(cx, F[3] + .02, F[1] + .1 - cx, .08); }
+  if (fdy) ctx.fillRect(cx - .05, Math.min(fe, re), .1, Math.abs(re - fe)); else ctx.fillRect(Math.min(fe, re), cy - .05, Math.abs(re - fe), .1);
   ctx.strokeStyle = 'rgba(120,95,70,.75)'; ctx.lineWidth = .014;
   ctx.strokeRect(x + .03, y + .03, .94, .94);
   ctx.fillStyle = 'rgba(120,95,70,.85)'; for (let k = .03; k < 1; k += .135){ ctx.fillRect(x + k - .008, y + .025, .016, .016); ctx.fillRect(x + k - .008, y + .96, .016, .016); ctx.fillRect(x + .025, y + k - .008, .016, .016); ctx.fillRect(x + .96, y + k - .008, .016, .016); }
@@ -5031,7 +5181,7 @@ function drawPowerLines(now){
       for (let k = 0; k < 40; k++){
         const a = k / 40 * Math.PI * 2, tx = Math.round(b.x + 1 + Math.cos(a) * 5), ty = Math.round(b.y + 1 + Math.sin(a) * 5);
         if (!inb(tx, ty)) continue; const i = idx(tx, ty);
-        if (S.road[i] || S.bld[i] >= 0 || S.terrain[i] === 1 || S.terrain[i] === 3) continue;
+        if (S.road[i] || S.bld[i] >= 0 || S.terrain[i] === 1 || S.terrain[i] >= 3) continue;
         const d = gdist(tx, ty); if (d < bd){ bd = d; best = [tx, ty]; }
       }
       b.sub = best;
@@ -5118,6 +5268,7 @@ function drawBuilding(b, now){
 const LOT_DYN = new Set(['square', 'yard', 'park', 'beach', 'port', 'site', 'void', 'bigpark', 'amuse', 'airport', 'landfill', 'cemetery']);
 function lotStatic(i){
   if (S.road[i] || S.terrain[i] === 1) return false;
+  if (S.terrain[i] === 4) return true;
   const bi = S.bld[i]; if (bi < 0) return false; const b = S.buildings[bi];
   return !LOT_DYN.has(b.type) && fwOf(b) === 1 && fhOf(b) === 1;
 }
@@ -5278,6 +5429,25 @@ function pad(x, y, inset, rad){
   if (ctx.roundRect) ctx.roundRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2, rad); else ctx.rect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
   ctx.fill();
 }
+/* бульвар посередине проспекта: газон с бордюром, деревья и фонари; у перекрёстка — закруглённый «нос» */
+function drawBoulevard(x, y, i){
+  const d = laneFlank(i), vert = d === 1, along = vert ? W : 1;
+  const rdA = k => k >= 0 && k < W * H && S.road[k];
+  const e0 = rdA(i - along), e1 = rdA(i + along), pad = .04, nose = .12;
+  let x0 = x + (vert ? pad : (e0 ? nose : 0)), x1 = x + 1 - (vert ? pad : (e1 ? nose : -.01));
+  let y0 = y + (vert ? (e0 ? nose : 0) : pad), y1 = y + 1 - (vert ? (e1 ? nose : -.01) : pad);
+  ctx.fillStyle = '#a7a39a'; ctx.beginPath();
+  const r = (e0 || e1) ? .42 : 0;
+  if (ctx.roundRect && r) ctx.roundRect(x0, y0, x1 - x0, y1 - y0, vert ? [e0 ? r : 0, e0 ? r : 0, e1 ? r : 0, e1 ? r : 0] : [e0 ? r : 0, e1 ? r : 0, e1 ? r : 0, e0 ? r : 0]); else ctx.rect(x0, y0, x1 - x0, y1 - y0);
+  ctx.fill();
+  const k = .035; ctx.fillStyle = '#86b866'; ctx.beginPath();
+  if (ctx.roundRect && r) ctx.roundRect(x0 + k, y0 + k, x1 - x0 - 2 * k, y1 - y0 - 2 * k, vert ? [e0 ? r : 0, e0 ? r : 0, e1 ? r : 0, e1 ? r : 0] : [e0 ? r : 0, e1 ? r : 0, e1 ? r : 0, e0 ? r : 0]); else ctx.rect(x0 + k, y0 + k, x1 - x0 - 2 * k, y1 - y0 - 2 * k);
+  ctx.fill();
+  if (e0 && e1) return;
+  const n = vert ? y : x;
+  if (n % 2 === 0){ const v = (n * 7 + 3) % 6; ctx.drawImage(treeSprite(v), x + .5 - .32, y + .5 - .52, .64, .64); }
+  else drawLamp2(x + .5, y + .62, vert);
+}
 function drawGround(x, y, i, now){
   const cl = S.road[i] ? curvesAt(i) : null;
   if (!cl) return drawGround0(x, y, i, now);
@@ -5296,6 +5466,7 @@ function drawGround0(x, y, i, now){
         ctx.beginPath(); ctx.moveTo(x + .2 + o, y + .5); ctx.lineTo(x + .55 + o, y + .5); ctx.stroke(); }
       return;
     }
+    if (t === 4) return drawBoulevard(x, y, i);
     const b = S.bld[i]; if (b < 0) return;
     const bb = S.buildings[b], type = bb.type;
     if (fwOf(bb) > 1 || fhOf(bb) > 1){
@@ -5370,7 +5541,7 @@ function drawGround0(x, y, i, now){
   const ax = x + (L ? 0 : SW), ay = y + (U ? 0 : SW), aw = 1.01 - (L ? 0 : SW) - (Rr ? 0 : SW), ah = 1.01 - (U ? 0 : SW) - (D ? 0 : SW);
   ctx.fillStyle = COL.road; ctx.fillRect(ax, ay, aw, ah);
   const dg = (dx, dy) => inb(x + dx, y + dy) && S.road[idx(x + dx, y + dy)];
-  ctx.fillStyle = pave; const cr = SW;
+  ctx.fillStyle = pave; const cr = (!AV && t !== 1 && isJ(i)) ? .36 : SW;   /* на перекрёстках обычных улиц бордюр закруглён по большому радиусу, как на схемах */
   const qc = (px, py, s0) => { ctx.beginPath(); ctx.moveTo(px, py); ctx.arc(px, py, cr, s0, s0 + Math.PI / 2); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#9b978c'; ctx.lineWidth = .016; ctx.beginPath(); ctx.arc(px, py, cr, s0, s0 + Math.PI / 2); ctx.stroke(); };
   if (L && U && !dg(-1, -1)) qc(x, y, 0);
   if (Rr && U && !dg(1, -1)) qc(x + 1, y, Math.PI / 2);
@@ -5431,7 +5602,9 @@ function drawLamp(lx, ly){
 }
 const TL_POS = [[.09, .09, 'U', false], [.91, .91, 'D', false], [.09, .91, 'L', true], [.91, .09, 'R', true]];
 function lightPoles(x, y, i){
-  const out = [], has = {U:rc(i, 0, -1), D:rc(i, 0, 1), L:rc(i, -1, 0), R:rc(i, 1, 0)};
+  const out = [], pt = partner(i), md = medOf(i);   /* соседняя клетка той же пары проспекта (или разрыв бульвара) — не рука перекрёстка, светофор между полосами не нужен */
+  const no = n => n === pt || n === md;
+  const has = {U:rc(i, 0, -1) && !no(i - W), D:rc(i, 0, 1) && !no(i + W), L:rc(i, -1, 0) && !no(i - 1), R:rc(i, 1, 0) && !no(i + 1)};
   for (const [ox, oy, side, horiz] of TL_POS){
     if (!has[side]) continue;
     const sx = ox < .5 ? -1 : 1, sy = oy < .5 ? -1 : 1;
@@ -5484,13 +5657,26 @@ function laneAt(k, base, outer, dx, dy){
   const f = typeof outer === 'number' ? outer : outer ? 1 : 0;
   return -.165 + .33 * f;
 }
+/* ПДД: на проспекте перед поворотом занимаем крайнюю полосу: направо — правую, налево — левую; прямо — любую (по умолчанию h) */
+function laneFor(path, i, h){
+  const n = path.length; let d0 = null;
+  for (let k = i; k < n - 1 && k < i + 8; k++){
+    const a = path[k], b = path[k + 1]; if (a === b) continue;
+    const dx = Math.sign((b % W) - (a % W)), dy = Math.sign(((b / W) | 0) - ((a / W) | 0)); if (dx && dy) continue;
+    if (!d0){ d0 = [dx, dy]; continue; }
+    if (dx !== d0[0] || dy !== d0[1]) return d0[0] * dy - d0[1] * dx > 0 ? 1 : 0;
+  }
+  return h ? 1 : 0;
+}
 function pose(path, pi, prog, lane0, outer){
   if (lane0 == null) lane0 = .165;
   const n = path.length, i = Math.min(pi, n - 2);
+  let outerB = outer;
+  if (outer && typeof outer === 'object'){ const h = outer.h; outer = avOf(path[i]) ? laneFor(path, i, h) : h; outerB = avOf(path[i + 1]) ? laneFor(path, i + 1, h) : h; }
   const a = tc(path[i]), b = tc(path[i + 1]);
   const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, t = Math.min(1, prog / L);
   const sx = (b[0] - a[0]) / L, sy = (b[1] - a[1]) / L;
-  const la = laneAt(path[i], lane0, outer, sx, sy), lb = laneAt(path[i + 1], lane0, outer, sx, sy), lane = la + (lb - la) * t;
+  const la = laneAt(path[i], lane0, outer, sx, sy), lb = laneAt(path[i + 1], lane0, outerB, sx, sy), lane = la + (lb - la) * t;
   let dx = (b[0] - a[0]) / L, dy = (b[1] - a[1]) / L;
   if (t > .6 && i + 2 < n){
     const c = tc(path[i + 2]), l = Math.hypot(c[0] - b[0], c[1] - b[1]) || 1, f = (t - .6) / .4 * .5;
@@ -5664,7 +5850,7 @@ function buildCarGrid(){
     if (p.st !== 'walk' || !p.car || !p.path) continue;
     { // позу считаем каждый тик сами (не из кадра): машины сталкиваются независимо от камеры и скорости 30×
       if (p.pi >= p.path.length - (NO_DRIVE.includes((S.buildings[p.dest] || {}).type) ? 2 : 1)) { p._x = p._a = null; continue; }
-      const q = pose(p.path, p.pi, p.prog, .165, hash(p.id * 3) < .5);
+      const q = pose(p.path, p.pi, p.prog, .165, {h: hash(p.id * 3) < .5});
       if (!q) continue;
       p._x = q[0]; p._y = q[1]; p._a = q[2];
     }
@@ -5675,10 +5861,71 @@ function buildCarGrid(){
    водитель тормозит плавно заранее (o._sf — множитель скорости 0..1), перекрываться машины не могут.
    Если машина застряла надолго, она проезжает мимо стоящей (иначе город встанет навсегда). */
 const CAR_LEN = o => o.kind === 'bus' ? .82 : o.kind === 'truck' || o.kind === 'firetruck' || o.kind === 'tanker' ? .6 : .42;
+/* ПДД: уступить на нерегулируемом перекрёстке (главная/второстепенная, «помеха справа», встречные при левом повороте)
+   и пешеходам на зебре. Ждём не дольше YIELD_MAX, чтобы четыре машины «по кругу» не встали навсегда. */
+const YIELD_MAX_T = () => REAL ? .12 : 3;   /* игровых минут: около 7 с реального времени в реальном режиме */
+function yieldJ(o, ca, sa){
+  const P = o.path; if (!P || o.pi == null || o.pi >= P.length - 1) { o._ys = 0; return false; }
+  const cur = P[o.pi], nxt = P[o.pi + 1];
+  if (cur === nxt || !S.road[cur] || !S.road[nxt] || isJ(cur) || !isJ(nxt)) { o._ys = 0; return false; }
+  const cx = cur % W, cy = (cur / W) | 0, nx = nxt % W, ny = (nxt / W) | 0, dx = Math.sign(nx - cx), dy = Math.sign(ny - cy);
+  if (dx && dy) return false;
+  const jx = nx + .5, jy = ny + .5, dist = (jx - o._x) * dx + (jy - o._y) * dy;
+  if (dist > 1.4 || dist <= .4) return false;
+  if (o._yfree > S.t) return false;
+  let must = false;
+  /* пешеходы на зебре: стоп до линии, пока кто-то на переходе */
+  try {
+    if (isCrossing(nxt, -dx, -dy) && typeof WALK !== 'undefined'){
+      const ex = cx + .5 + dx * .5, ey = cy + .5 + dy * .5;
+      for (const p of S.people){
+        if (p.st !== 'walk' || p.car) continue;
+        const we = WALK.get(p.id); if (!we || we.s !== S) continue;
+        const q = wpos(we, p); if (!q) continue;
+        const al = (q[0] - ex) * dx + (q[1] - ey) * dy, lt = -(q[0] - ex) * dy + (q[1] - ey) * dx;
+        if (Math.abs(al) < .4 && Math.abs(lt) < .55){ must = true; break; }
+      }
+    }
+  } catch (e) {}
+  /* светофора нет: смотрим на перекрёсток */
+  if (!must && !hasLight(nxt)){
+    let last = nxt, k = o.pi + 2; while (k < P.length && isJ(P[k]) && P[k] !== last){ last = P[k]; k++; }
+    const ext = k < P.length ? P[k] : last, ex2 = Math.sign((ext % W) - (last % W)), ey2 = Math.sign(((ext / W) | 0) - ((last / W) | 0));
+    const left = (dx * ey2 - dy * ex2) < 0;
+    const myMain = avOf(cur) > 0, rx = -sa, ry = ca;
+    const gx = (jx * .5) | 0, gy = (jy * .5) | 0;
+    outer: for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++){
+      const l = CAR_GRID.get((gx + a) * 1000 + gy + b); if (!l) continue;
+      for (const q of l){
+        if (q.o === o || q.o.siren || q.o._ys > 0) continue;   /* кто сам уступает, преимущества не имеет */
+        const hx = Math.cos(q.a), hy = Math.sin(q.a), cs = hx * ca + hy * sa;
+        const toJx = jx - q.x, toJy = jy - q.y, dq = Math.hypot(toJx, toJy);
+        if (dq > 2.2) continue;
+        if (cs < -.7){                      /* встречный: пропускаем при левом повороте */
+          if (left && toJx * hx + toJy * hy > -.3 && Math.abs((q.x - o._x) * rx + (q.y - o._y) * ry) < 1.1){ must = true; break outer; }
+          continue;
+        }
+        if (Math.abs(cs) > .5) continue;     /* попутный — не помеха */
+        if (toJx * hx + toJy * hy < -.6) continue;   /* уже проехал перекрёсток */
+        const qMain = avOf(idx(Math.max(0, Math.min(W - 1, q.x | 0)), Math.max(0, Math.min(H - 1, q.y | 0)))) > 0;
+        const fromRight = (q.x - o._x) * rx + (q.y - o._y) * ry > 0;
+        if (myMain && !qMain) continue;
+        if (!myMain && qMain){ must = true; break outer; }
+        if (fromRight){ must = true; break outer; }
+      }
+    }
+  }
+  if (!must) { o._ys = 0; return false; }
+  if (!o._ys) o._ys = S.t;
+  if (S.t - o._ys > YIELD_MAX_T()){ o._yfree = S.t + 6; o._ys = 0; return false; }
+  o._sf = Math.min(o._sf == null ? 1 : o._sf, Math.max(0, (dist - .5) / .9));
+  return dist <= .55;
+}
 function carBlocked(o){
   o._sf = 1;
   if (o.siren || o._x == null || o._a == null || Math.abs(S.t - CAR_ST) > 3) return false;
   const ca = Math.cos(o._a), sa = Math.sin(o._a), myL = CAR_LEN(o);
+  if (yieldJ(o, ca, sa)) return true;
   const spd = Math.min(1.2, o.kind ? (o.sp || 1) : speedOf(o)), stopGap = .55 * myL;
   const need = stopGap + (myL + .8 * spd) * Math.min(1, spd / .6);
   const gx = (o._x * .5) | 0, gy = (o._y * .5) | 0; let gap = 1e9, hit = false;
@@ -5691,6 +5938,10 @@ function carBlocked(o){
       if (da > 2.4) continue;
       if (Math.abs(ahead) <= .02 && Math.abs(lat) < .15){ if (!o._cid) o._cid = ++CAR_ID; if (!q.o._cid) q.o._cid = ++CAR_ID; if (o._cid > q.o._cid){ hit = true; gap = 0; } continue; }
       if (ahead <= .02 || Math.abs(lat) > (da > 1.1 ? .26 : .15)) continue;
+      if (da > .5){   /* пересекающиеся траектории в зоне перекрёстка: уступает только тот, у кого номер больше — иначе все встают друг против друга */
+        const tq = idx(Math.max(0, Math.min(W - 1, q.x | 0)), Math.max(0, Math.min(H - 1, q.y | 0))), to = idx(Math.max(0, Math.min(W - 1, o._x | 0)), Math.max(0, Math.min(H - 1, o._y | 0)));
+        if (isJ(tq) || isJ(to)){ if (!o._cid) o._cid = ++CAR_ID; if (!q.o._cid) q.o._cid = ++CAR_ID; if (o._cid < q.o._cid) continue; }
+      }
       const g = ahead - (myL + q.L) / 2;
       if (g < need && g < gap) gap = g;
     }
@@ -5702,7 +5953,8 @@ function carBlocked(o){
   o._blk = true;
   if (!o._bs) o._bs = S.t;
   if (S.t < o._bs){ o._sf = .6; return false; }
-  if (S.t - o._bs > 45){ o._bs = S.t + 15; o._sf = .6; return false; }
+  const GT = REAL ? .006 : 1;   /* в реальном режиме игровая минута длится минуту: 45 «минут» простоя там означало бы вечность */
+  if (S.t - o._bs > 45 * GT){ o._bs = S.t + 15 * GT; o._sf = .6; return false; }
   o._sf = 0;
   return true;
 }
@@ -5950,7 +6202,7 @@ function drawBeach(b, now){
   ctx.fillStyle = '#f7f3ea'; ctx.fillRect(x + .72, y + .02, .2, .08);
 }
 function personPos(p, now){
-  if (p.st === 'walk' && p.path && p.car && p.pi < p.path.length - (NO_DRIVE.includes((S.buildings[p.dest] || {}).type) ? 2 : 1)) return pose(p.path, p.pi, p.prog, .165, hash(p.id * 3) < .5);
+  if (p.st === 'walk' && p.path && p.car && p.pi < p.path.length - (NO_DRIVE.includes((S.buildings[p.dest] || {}).type) ? 2 : 1)) return pose(p.path, p.pi, p.prog, .165, {h: hash(p.id * 3) < .5});
   if (p.st === 'walk' && !p.car){
     const we = WALK.get(p.id);
     if (we && we.s === S && we.d === p.dest){ const q = wpos(we, p); if (q) return q; }
@@ -6036,7 +6288,8 @@ function draw(now){
   }
   const vis = [];
   for (const v of traffic){
-    if (v.o === undefined) v.o = R() < .5;
+    if (v.o0 === undefined) v.o0 = R() < .5;
+    v.o = !!laneFor(v.path, v.pi, v.o0);
     v.of = v.of == null ? (v.o ? 1 : 0) : v.of + ((v.o ? 1 : 0) - v.of) * .06;
     const ps = pose(v.path, v.pi, v.prog, .165, v.of); v._x = ps[0]; v._y = ps[1]; v._a = ps[2];
     const ry = Math.floor(v._y); if (ry < vy0 - 1 || ry > vy1 + 1 || v._x < vx0 - 1 || v._x > vx1 + 2) continue;
@@ -6541,8 +6794,29 @@ function paintThumb(){
     }
   } catch (e) {} finally { ctx = saved; }
 }
-let lastInsp = '', lastLogKey = '', lastPeople = 0;
+/* ВЕРСИЯ И ЖУРНАЛ ОБНОВЛЕНИЙ — при каждом новом обновлении: поднять GAME_VERSION и добавить запись СВЕРХУ списка CHANGELOG */
+const GAME_VERSION = 'v48';
+const CHANGELOG = [
+  {v:'v48', d:'8 окт 2026', t:['Проспект теперь в 3 клетки: полосы туда, бульвар с деревьями посередине, полосы обратно','Улица расширяется симметрично: новые полосы с обеих сторон, старая улица становится бульваром — ось проспекта совпадает с осью улицы','Улицы подходят к проспекту ровно по центру, в разрыв бульвара','Старые проспекты перестраиваются при загрузке, где хватает места; где нет — остаются как были (запись в журнале)']},
+  {v:'v47', d:'8 окт 2026', t:['Если улицу с пробками нельзя расширить ни в одну сторону, мэрия пишет об этом в журнал']},
+  {v:'v46', d:'8 окт 2026', t:['Проспект, который сужается до обычной улицы на перекрёстке, мэрия теперь продлевает раньше и в первую очередь (с 60 жителей, раньше со 140)']},
+  {v:'v45', d:'8 окт 2026', t:['Светофоры на перекрёстках проспектов стоят по краям дороги, а не посередине между полосами']},
+  {v:'v44', d:'8 окт 2026', t:['На проспектах перед перекрёстком нарисованы стрелки полос: правая — прямо и направо, левая — налево и прямо','Машины заранее занимают нужную полосу: перед правым поворотом правую, перед левым — левую']},
+  {v:'v43', d:'8 окт 2026', t:['Перекрёстки обычных улиц: бордюры закруглены по большому радиусу, как на схемах','Осевая на проспектах стала заметнее (двойная сплошная жёлтая)']},
+  {v:'v42', d:'8 окт 2026', t:['ПДД: на перекрёстках без светофора машины уступают (главная/второстепенная, помеха справа, встречные при левом повороте)','Машины уступают пешеходам на зебре','Исправлены заторы на перекрёстках проспектов и наложения машин','Старые сохранения: участки, где правила не выполнить, отмечаются в журнале']},
+  {v:'v41', d:'8 окт 2026', t:['Здания выровнены по клеткам города и по дорогам','Дворы и съезды подогнаны под сетку']},
+  {v:'v40', d:'8 окт 2026', t:['Убраны кольцевые перекрёстки','Машины держат дистанцию и не наезжают друг на друга','Трафик уменьшен']}
+];
+let lastInsp = '', lastLogKey = '', lastPeople = 0, clShown = '';
+function renderChangelog(){
+  if (clShown === GAME_VERSION) return; clShown = GAME_VERSION;
+  const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  $('cityVer').textContent = 'Версия ' + GAME_VERSION + ' · обновлено ' + CHANGELOG[0].d;
+  $('clSum').textContent = 'Что нового · ' + GAME_VERSION;
+  $('clList').innerHTML = CHANGELOG.map(c => '<div><b>' + esc(c.v) + '</b> · ' + esc(c.d) + '<ul style="margin:2px 0 8px 16px;padding:0">' + c.t.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul></div>').join('');
+}
 function renderPanel(force){
+  renderChangelog();
   const st = stats();
   $('cityName').textContent = S.name;
   $('citySub').textContent = 'Родилось ' + S.born + ' · приехало ' + S.arrived + ' · уехало ' + S.left + ' · умерло ' + S.died;
@@ -7084,6 +7358,3 @@ window.samograd = {hl:hasLight, personPos, pedRoute, isJ, cloud:() => ({state:Cl
 window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 })();
 </script>
-
-</body>
-</html>
